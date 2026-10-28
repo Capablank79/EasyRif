@@ -1,0 +1,83 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1793053122993,
+      "tag": "0000_schema_inicial",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793053130220,
+      "tag": "0001_triggers_integridad",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793054890988,
+      "tag": "0002_pretty_jack_power",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793055117510,
+      "tag": "0003_wooden_butterfly",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793103839582,
+      "tag": "0004_rifas_integridad_publicacion",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793106568564,
+      "tag": "0005_short_molecule_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793107132279,
+      "tag": "0006_glossy_loki",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793109538212,
+      "tag": "0007_cooing_shadowcat",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793113980735,
+      "tag": "0008_talonarios_foliados",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793115330074,
+      "tag": "0009_salty_silver_fox",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793123550004,
+      "tag": "0010_large_rhodey",
+      "breakpoints": true
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+ALTER TABLE "orders" DROP CONSTRAINT "orders_demo_has_expiry";--> statement-breakpoint
+ALTER TABLE "orders" ADD CONSTRAINT "orders_demo_has_expiry" CHECK ("orders"."access_token_hash" is null or "orders"."status" <> 'pending' or "orders"."expires_at" is not null);

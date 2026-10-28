@@ -1,0 +1,13 @@
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: easyrif
+      POSTGRES_PASSWORD: easyrif_dev
+      POSTGRES_DB: easyrif
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - easyrif_pgdata:/var/lib/postgresql
+volumes:
+  easyrif_pgdata:

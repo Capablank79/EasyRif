@@ -1,0 +1,3322 @@
+{
+  "id": "968cc7a2-96b5-4bc7-94a0-85356e5784bf",
+  "prevId": "5d7a3e6f-6f9e-4182-a022-750236ba1b30",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.organization_members": {
+      "name": "organization_members",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "member_role",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "member_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "organization_members_user_idx": {
+          "name": "organization_members_user_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "organization_members_org_fk": {
+          "name": "organization_members_org_fk",
+          "tableFrom": "organization_members",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "organization_members_user_fk": {
+          "name": "organization_members_user_fk",
+          "tableFrom": "organization_members",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "organization_members_org_user_uq": {
+          "name": "organization_members_org_user_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organization_id",
+            "user_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.organizations": {
+      "name": "organizations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "organization_type",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'individual'"
+        },
+        "status": {
+          "name": "status",
+          "type": "organization_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "organizations_name_len": {
+          "name": "organizations_name_len",
+          "value": "char_length(btrim(\"organizations\".\"name\")) between 1 and 160"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.platform_admins": {
+      "name": "platform_admins",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "platform_admins_user_id_users_id_fk": {
+          "name": "platform_admins_user_id_users_id_fk",
+          "tableFrom": "platform_admins",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.users": {
+      "name": "users",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "email_verified": {
+          "name": "email_verified",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "image": {
+          "name": "image",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "users_email_uq": {
+          "name": "users_email_uq",
+          "columns": [
+            {
+              "expression": "email",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "users_email_normalized": {
+          "name": "users_email_normalized",
+          "value": "\"users\".\"email\" = lower(btrim(\"users\".\"email\")) and \"users\".\"email\" ~ '^[^@\\s]+@[^@\\s]+$' and char_length(\"users\".\"email\") <= 254"
+        },
+        "users_display_name_len": {
+          "name": "users_display_name_len",
+          "value": "\"users\".\"display_name\" is null or char_length(\"users\".\"display_name\") <= 120"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.auth_accounts": {
+      "name": "auth_accounts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "account_id": {
+          "name": "account_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider_id": {
+          "name": "provider_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "password": {
+          "name": "password",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "access_token": {
+          "name": "access_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "refresh_token": {
+          "name": "refresh_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "id_token": {
+          "name": "id_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "access_token_expires_at": {
+          "name": "access_token_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "refresh_token_expires_at": {
+          "name": "refresh_token_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "auth_accounts_user_idx": {
+          "name": "auth_accounts_user_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "auth_accounts_user_id_users_id_fk": {
+          "name": "auth_accounts_user_id_users_id_fk",
+          "tableFrom": "auth_accounts",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.auth_sessions": {
+      "name": "auth_sessions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token": {
+          "name": "token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ip_address": {
+          "name": "ip_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "user_agent": {
+          "name": "user_agent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "auth_sessions_user_idx": {
+          "name": "auth_sessions_user_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "auth_sessions_user_id_users_id_fk": {
+          "name": "auth_sessions_user_id_users_id_fk",
+          "tableFrom": "auth_sessions",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "auth_sessions_token_unique": {
+          "name": "auth_sessions_token_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "token"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.auth_verifications": {
+      "name": "auth_verifications",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "identifier": {
+          "name": "identifier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "auth_verifications_identifier_idx": {
+          "name": "auth_verifications_identifier_idx",
+          "columns": [
+            {
+              "expression": "identifier",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.booklet_assignments": {
+      "name": "booklet_assignments",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "raffle_id": {
+          "name": "raffle_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "booklet_id": {
+          "name": "booklet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seller_id": {
+          "name": "seller_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "assigned_by": {
+          "name": "assigned_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "assigned_at": {
+          "name": "assigned_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ended_by": {
+          "name": "ended_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "booklet_assignments_active_uq": {
+          "name": "booklet_assignments_active_uq",
+          "columns": [
+            {
+              "expression": "booklet_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"booklet_assignments\".\"ended_at\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "booklet_assignments_seller_idx": {
+          "name": "booklet_assignments_seller_idx",
+          "columns": [
+            {
+              "expression": "seller_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "booklet_assignments_raffle_idx": {
+          "name": "booklet_assignments_raffle_idx",
+          "columns": [
+            {
+              "expression": "raffle_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "booklet_assignments_raffle_org_fk": {
+          "name": "booklet_assignments_raffle_org_fk",
+          "tableFrom": "booklet_assignments",
+          "tableTo": "raffles",
+          "columnsFrom": [
+            "raffle_id",
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id",
+            "organization_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "booklet_assignments_booklet_fk": {
+          "name": "booklet_assignments_booklet_fk",
+          "tableFrom": "booklet_assignments",
+          "tableTo": "booklets",
+          "columnsFrom": [
+            "booklet_id",
+            "raffle_id"
+          ],
+          "columnsTo": [
+            "id",
+            "raffle_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "booklet_assignments_seller_org_fk": {
+          "name": "booklet_assignments_seller_org_fk",
+          "tableFrom": "booklet_assignments",
+          "tableTo": "sellers",
+          "columnsFrom": [
+            "seller_id",
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id",
+            "organization_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "booklet_assignments_period": {
+          "name": "booklet_assignments_period",
+          "value": "\"booklet_assignments\".\"ended_at\" is null or \"booklet_assignments\".\"ended_at\" >= \"booklet_assignments\".\"assigned_at\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.booklets": {
+      "name": "booklets",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "raffle_id": {
+          "name": "raffle_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "folio": {
+          "name": "folio",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "booklets_raffle_org_fk": {
+          "name": "booklets_raffle_org_fk",
+          "tableFrom": "booklets",
+          "tableTo": "raffles",
+          "columnsFrom": [
+            "raffle_id",
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id",
+            "organization_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "booklets_raffle_folio_uq": {
+          "name": "booklets_raffle_folio_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "raffle_id",
+            "folio"
+          ]
+        },
+        "booklets_id_raffle_uq": {
+          "name": "booklets_id_raffle_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "raffle_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "booklets_folio_range": {
+          "name": "booklets_folio_range",
+          "value": "\"booklets\".\"folio\" between 1 and 99999"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.digital_products": {
+      "name": "digital_products",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "raffle_id": {
+          "name": "raffle_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "template_ref": {
+          "name": "template_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "digital_products_raffle_idx": {
+          "name": "digital_products_raffle_idx",
+          "columns": [
+            {
+              "expression": "raffle_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "digital_products_raffle_org_fk": {
+          "name": "digital_products_raffle_org_fk",
+          "tableFrom": "digital_products",
+          "tableTo": "raffles",
+          "columnsFrom": [
+            "raffle_id",
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id",
+            "organization_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "digital_products_id_raffle_uq": {
+          "name": "digital_products_id_raffle_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "raffle_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "digital_products_name_len": {
+          "name": "digital_products_name_len",
+          "value": "char_length(btrim(\"digital_products\".\"name\")) between 1 and 200"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.numbered_product_units": {
+      "name": "numbered_product_units",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "raffle_id": {
+          "name": "raffle_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "digital_product_id": {
+          "name": "digital_product_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "raffle_number_id": {
+          "name": "raffle_number_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "document_ref": {
+          "name": "document_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "numbered_units_number_idx": {
+          "name": "numbered_units_number_idx",
+          "columns": [
+            {
+              "expression": "raffle_number_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "numbered_units_raffle_org_fk": {
+          "name": "numbered_units_raffle_org_fk",
+          "tableFrom": "numbered_product_units",
+          "tableTo": "raffles",
+          "columnsFrom": [
+            "raffle_id",
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id",
+            "organization_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "numbered_units_product_fk": {
+          "name": "numbered_units_product_fk",
+          "tableFrom": "numbered_product_units",
+          "tableTo": "digital_products",
+          "columnsFrom": [
+            "digital_product_id",
+            "raffle_id"
+          ],
+          "columnsTo": [
+            "id",
+            "raffle_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "numbered_units_number_fk": {
+          "name": "numbered_units_number_fk",
+          "tableFrom": "numbered_product_units",
+          "tableTo": "raffle_numbers",
+          "columnsFrom": [
+            "raffle_number_id",
+            "raffle_id"
+          ],
+          "columnsTo": [
+            "id",
+            "raffle_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "numbered_units_product_number_uq": {
+          "name": "numbered_units_product_number_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "digital_product_id",
+            "raffle_number_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.prizes": {
+      "name": "prizes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "raffle_id": {
+          "name": "raffle_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "image_key": {
+          "name": "image_key",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "prizes_raffle_org_fk": {
+          "name": "prizes_raffle_org_fk",
+          "tableFrom": "prizes",
+          "tableTo": "raffles",
+          "columnsFrom": [
+            "raffle_id",
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id",
+            "organization_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "prizes_raffle_position_uq": {
+          "name": "prizes_raffle_position_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "raffle_id",
+            "position"
+          ]
+        },
+        "prizes_id_raffle_uq": {
+          "name": "prizes_id_raffle_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "raffle_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "prizes_position_pos": {
+          "name": "prizes_position_pos",
+          "value": "\"prizes\".\"position\" >= 1"
+        },
+        "prizes_title_len": {
+          "name": "prizes_title_len",
+          "value": "char_length(btrim(\"prizes\".\"title\")) between 1 and 200"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.raffle_numbers": {
+      "name": "raffle_numbers",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "raffle_id": {
+          "name": "raffle_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "number": {
+          "name": "number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "booklet_id": {
+          "name": "booklet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "local_number": {
+          "name": "local_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "number_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'available'"
+        },
+        "reservation_id": {
+          "name": "reservation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reserved_until": {
+          "name": "reserved_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "raffle_numbers_booklet_status_idx": {
+          "name": "raffle_numbers_booklet_status_idx",
+          "columns": [
+            {
+              "expression": "booklet_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "raffle_numbers_raffle_status_idx": {
+          "name": "raffle_numbers_raffle_status_idx",
+          "columns": [
+            {
+              "expression": "raffle_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "raffle_numbers_reserved_until_idx": {
+          "name": "raffle_numbers_reserved_until_idx",
+          "columns": [
+            {
+              "expression": "reserved_until",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"raffle_numbers\".\"status\" = 'reserved'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "raffle_numbers_raffle_org_fk": {
+          "name": "raffle_numbers_raffle_org_fk",
+          "tableFrom": "raffle_numbers",
+          "tableTo": "raffles",
+          "columnsFrom": [
+            "raffle_id",
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id",
+            "organization_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "raffle_numbers_booklet_fk": {
+          "name": "raffle_numbers_booklet_fk",
+          "tableFrom": "raffle_numbers",
+          "tableTo": "booklets",
+          "columnsFrom": [
+            "booklet_id",
+            "raffle_id"
+          ],
+          "columnsTo": [
+            "id",
+            "raffle_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "raffle_numbers_booklet_local_uq": {
+          "name": "raffle_numbers_booklet_local_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "booklet_id",
+            "local_number"
+          ]
+        },
+        "raffle_numbers_raffle_number_uq": {
+          "name": "raffle_numbers_raffle_number_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "raffle_id",
+            "number"
+          ]
+        },
+        "raffle_numbers_id_raffle_uq": {
+          "name": "raffle_numbers_id_raffle_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "raffle_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "raffle_numbers_booklet_pair": {
+          "name": "raffle_numbers_booklet_pair",
+          "value": "(\"raffle_numbers\".\"booklet_id\" is null and \"raffle_numbers\".\"local_number\" is null)\n        or (\"raffle_numbers\".\"booklet_id\" is not null and \"raffle_numbers\".\"local_number\" between 1 and 9999)"
+        },
+        "raffle_numbers_format": {
+          "name": "raffle_numbers_format",
+          "value": "\"raffle_numbers\".\"number\" ~ '^[A-Z0-9]{1,12}$'"
+        },
+        "raffle_numbers_reservation_consistent": {
+          "name": "raffle_numbers_reservation_consistent",
+          "value": "(\"raffle_numbers\".\"status\" = 'reserved' and \"raffle_numbers\".\"reserved_until\" is not null and \"raffle_numbers\".\"reservation_id\" is not null)\n        or (\"raffle_numbers\".\"status\" <> 'reserved' and \"raffle_numbers\".\"reserved_until\" is null and \"raffle_numbers\".\"reservation_id\" is null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.raffles": {
+      "name": "raffles",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "raffle_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'draft'"
+        },
+        "price_cents": {
+          "name": "price_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'CLP'"
+        },
+        "number_count": {
+          "name": "number_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "starts_at": {
+          "name": "starts_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ends_at": {
+          "name": "ends_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "image_key": {
+          "name": "image_key",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "numbering_mode": {
+          "name": "numbering_mode",
+          "type": "numbering_mode",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'individual'"
+        },
+        "booklet_count": {
+          "name": "booklet_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "numbers_per_booklet": {
+          "name": "numbers_per_booklet",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "first_folio": {
+          "name": "first_folio",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sales_closes_at": {
+          "name": "sales_closes_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "draw_at": {
+          "name": "draw_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "raffles_org_status_idx": {
+          "name": "raffles_org_status_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "raffles_org_fk": {
+          "name": "raffles_org_fk",
+          "tableFrom": "raffles",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "raffles_created_by_fk": {
+          "name": "raffles_created_by_fk",
+          "tableFrom": "raffles",
+          "tableTo": "users",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "raffles_slug_uq": {
+          "name": "raffles_slug_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "slug"
+          ]
+        },
+        "raffles_id_org_uq": {
+          "name": "raffles_id_org_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "organization_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "raffles_slug_format": {
+          "name": "raffles_slug_format",
+          "value": "\"raffles\".\"slug\" ~ '^[a-z0-9]+(-[a-z0-9]+)*$' and char_length(\"raffles\".\"slug\") between 3 and 64"
+        },
+        "raffles_title_len": {
+          "name": "raffles_title_len",
+          "value": "char_length(btrim(\"raffles\".\"title\")) between 1 and 200"
+        },
+        "raffles_price_nonneg": {
+          "name": "raffles_price_nonneg",
+          "value": "\"raffles\".\"price_cents\" >= 0"
+        },
+        "raffles_currency_format": {
+          "name": "raffles_currency_format",
+          "value": "\"raffles\".\"currency\" ~ '^[A-Z]{3}$'"
+        },
+        "raffles_number_count_pos": {
+          "name": "raffles_number_count_pos",
+          "value": "\"raffles\".\"number_count\" > 0"
+        },
+        "raffles_numbering_config": {
+          "name": "raffles_numbering_config",
+          "value": "(\"raffles\".\"numbering_mode\" = 'individual'\n            and \"raffles\".\"booklet_count\" is null and \"raffles\".\"numbers_per_booklet\" is null and \"raffles\".\"first_folio\" is null)\n        or (\"raffles\".\"numbering_mode\" = 'booklets'\n            and \"raffles\".\"booklet_count\" > 0 and \"raffles\".\"numbers_per_booklet\" > 0 and \"raffles\".\"first_folio\" >= 1\n            and \"raffles\".\"first_folio\" + \"raffles\".\"booklet_count\" - 1 <= 99999\n            and \"raffles\".\"numbers_per_booklet\" <= 9999\n            and \"raffles\".\"number_count\" = \"raffles\".\"booklet_count\" * \"raffles\".\"numbers_per_booklet\")"
+        },
+        "raffles_dates_order": {
+          "name": "raffles_dates_order",
+          "value": "\"raffles\".\"starts_at\" is null or \"raffles\".\"ends_at\" is null or \"raffles\".\"ends_at\" > \"raffles\".\"starts_at\""
+        },
+        "raffles_sales_draw_order": {
+          "name": "raffles_sales_draw_order",
+          "value": "\"raffles\".\"sales_closes_at\" is null or \"raffles\".\"draw_at\" is null or \"raffles\".\"draw_at\" > \"raffles\".\"sales_closes_at\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.sellers": {
+      "name": "sellers",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "raffle_id": {
+          "name": "raffle_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "seller_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "sellers_org_idx": {
+          "name": "sellers_org_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "sellers_org_fk": {
+          "name": "sellers_org_fk",
+          "tableFrom": "sellers",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "sellers_raffle_org_fk": {
+          "name": "sellers_raffle_org_fk",
+          "tableFrom": "sellers",
+          "tableTo": "raffles",
+          "columnsFrom": [
+            "raffle_id",
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id",
+            "organization_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "sellers_token_hash_uq": {
+          "name": "sellers_token_hash_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "token_hash"
+          ]
+        },
+        "sellers_id_org_uq": {
+          "name": "sellers_id_org_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "organization_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "sellers_token_hash_format": {
+          "name": "sellers_token_hash_format",
+          "value": "\"sellers\".\"token_hash\" ~ '^[0-9a-f]{64}$'"
+        },
+        "sellers_name_len": {
+          "name": "sellers_name_len",
+          "value": "char_length(btrim(\"sellers\".\"display_name\")) between 1 and 160"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.buyer_contacts": {
+      "name": "buyer_contacts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "phone": {
+          "name": "phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "buyer_contacts_org_fk": {
+          "name": "buyer_contacts_org_fk",
+          "tableFrom": "buyer_contacts",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "buyer_contacts_id_org_uq": {
+          "name": "buyer_contacts_id_org_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "organization_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "buyer_contacts_name_len": {
+          "name": "buyer_contacts_name_len",
+          "value": "char_length(btrim(\"buyer_contacts\".\"name\")) between 1 and 160"
+        },
+        "buyer_contacts_has_contact": {
+          "name": "buyer_contacts_has_contact",
+          "value": "\"buyer_contacts\".\"email\" is not null or \"buyer_contacts\".\"phone\" is not null"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.order_item_participants": {
+      "name": "order_item_participants",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "order_item_id": {
+          "name": "order_item_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "order_id": {
+          "name": "order_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "raffle_id": {
+          "name": "raffle_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "phone": {
+          "name": "phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "participants_order_idx": {
+          "name": "participants_order_idx",
+          "columns": [
+            {
+              "expression": "order_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "participants_raffle_org_fk": {
+          "name": "participants_raffle_org_fk",
+          "tableFrom": "order_item_participants",
+          "tableTo": "raffles",
+          "columnsFrom": [
+            "raffle_id",
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id",
+            "organization_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "participants_item_fk": {
+          "name": "participants_item_fk",
+          "tableFrom": "order_item_participants",
+          "tableTo": "order_items",
+          "columnsFrom": [
+            "order_item_id",
+            "raffle_id"
+          ],
+          "columnsTo": [
+            "id",
+            "raffle_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "participants_item_uq": {
+          "name": "participants_item_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "order_item_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "participants_name_len": {
+          "name": "participants_name_len",
+          "value": "char_length(btrim(\"order_item_participants\".\"name\")) between 2 and 100"
+        },
+        "participants_email_format": {
+          "name": "participants_email_format",
+          "value": "\"order_item_participants\".\"email\" ~ '^[^[:space:]@]+@[^[:space:]@]+[.][^[:space:]@]+$' and char_length(\"order_item_participants\".\"email\") <= 254"
+        },
+        "participants_phone_format": {
+          "name": "participants_phone_format",
+          "value": "\"order_item_participants\".\"phone\" is null or \"order_item_participants\".\"phone\" ~ '^[0-9+()[:space:]-]{6,20}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.order_items": {
+      "name": "order_items",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "order_id": {
+          "name": "order_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "raffle_id": {
+          "name": "raffle_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "raffle_number_id": {
+          "name": "raffle_number_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "digital_product_id": {
+          "name": "digital_product_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "price_cents": {
+          "name": "price_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "holds_number": {
+          "name": "holds_number",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "order_items_number_held_uq": {
+          "name": "order_items_number_held_uq",
+          "columns": [
+            {
+              "expression": "raffle_number_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"order_items\".\"holds_number\"",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "order_items_order_idx": {
+          "name": "order_items_order_idx",
+          "columns": [
+            {
+              "expression": "order_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "order_items_raffle_org_fk": {
+          "name": "order_items_raffle_org_fk",
+          "tableFrom": "order_items",
+          "tableTo": "raffles",
+          "columnsFrom": [
+            "raffle_id",
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id",
+            "organization_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "order_items_order_fk": {
+          "name": "order_items_order_fk",
+          "tableFrom": "order_items",
+          "tableTo": "orders",
+          "columnsFrom": [
+            "order_id",
+            "raffle_id"
+          ],
+          "columnsTo": [
+            "id",
+            "raffle_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "order_items_number_fk": {
+          "name": "order_items_number_fk",
+          "tableFrom": "order_items",
+          "tableTo": "raffle_numbers",
+          "columnsFrom": [
+            "raffle_number_id",
+            "raffle_id"
+          ],
+          "columnsTo": [
+            "id",
+            "raffle_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "order_items_product_fk": {
+          "name": "order_items_product_fk",
+          "tableFrom": "order_items",
+          "tableTo": "digital_products",
+          "columnsFrom": [
+            "digital_product_id",
+            "raffle_id"
+          ],
+          "columnsTo": [
+            "id",
+            "raffle_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "order_items_order_number_uq": {
+          "name": "order_items_order_number_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "order_id",
+            "raffle_number_id"
+          ]
+        },
+        "order_items_id_raffle_uq": {
+          "name": "order_items_id_raffle_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "raffle_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "order_items_price_nonneg": {
+          "name": "order_items_price_nonneg",
+          "value": "\"order_items\".\"price_cents\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.orders": {
+      "name": "orders",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "raffle_id": {
+          "name": "raffle_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "buyer_contact_id": {
+          "name": "buyer_contact_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "seller_id": {
+          "name": "seller_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "order_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'draft'"
+        },
+        "total_cents": {
+          "name": "total_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'CLP'"
+        },
+        "is_demo": {
+          "name": "is_demo",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "access_token_hash": {
+          "name": "access_token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "request_key_hash": {
+          "name": "request_key_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "verification_hash": {
+          "name": "verification_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "receipt_issued_at": {
+          "name": "receipt_issued_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "orders_raffle_status_idx": {
+          "name": "orders_raffle_status_idx",
+          "columns": [
+            {
+              "expression": "raffle_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "orders_access_token_uq": {
+          "name": "orders_access_token_uq",
+          "columns": [
+            {
+              "expression": "access_token_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "orders_verification_uq": {
+          "name": "orders_verification_uq",
+          "columns": [
+            {
+              "expression": "verification_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "orders_request_key_uq": {
+          "name": "orders_request_key_uq",
+          "columns": [
+            {
+              "expression": "raffle_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "request_key_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "orders_raffle_org_fk": {
+          "name": "orders_raffle_org_fk",
+          "tableFrom": "orders",
+          "tableTo": "raffles",
+          "columnsFrom": [
+            "raffle_id",
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id",
+            "organization_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "orders_buyer_org_fk": {
+          "name": "orders_buyer_org_fk",
+          "tableFrom": "orders",
+          "tableTo": "buyer_contacts",
+          "columnsFrom": [
+            "buyer_contact_id",
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id",
+            "organization_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "orders_seller_org_fk": {
+          "name": "orders_seller_org_fk",
+          "tableFrom": "orders",
+          "tableTo": "sellers",
+          "columnsFrom": [
+            "seller_id",
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id",
+            "organization_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "orders_id_raffle_uq": {
+          "name": "orders_id_raffle_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "raffle_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "orders_demo_never_confirmed": {
+          "name": "orders_demo_never_confirmed",
+          "value": "not \"orders\".\"is_demo\" or \"orders\".\"status\" <> 'confirmed'"
+        },
+        "orders_demo_has_expiry": {
+          "name": "orders_demo_has_expiry",
+          "value": "\"orders\".\"access_token_hash\" is null or \"orders\".\"status\" <> 'pending' or \"orders\".\"expires_at\" is not null"
+        },
+        "orders_total_nonneg": {
+          "name": "orders_total_nonneg",
+          "value": "\"orders\".\"total_cents\" >= 0"
+        },
+        "orders_currency_format": {
+          "name": "orders_currency_format",
+          "value": "\"orders\".\"currency\" ~ '^[A-Z]{3}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.drawings": {
+      "name": "drawings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "raffle_id": {
+          "name": "raffle_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "drawing_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "performed_at": {
+          "name": "performed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "result_evidence": {
+          "name": "result_evidence",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "drawings_raffle_idx": {
+          "name": "drawings_raffle_idx",
+          "columns": [
+            {
+              "expression": "raffle_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "drawings_raffle_org_fk": {
+          "name": "drawings_raffle_org_fk",
+          "tableFrom": "drawings",
+          "tableTo": "raffles",
+          "columnsFrom": [
+            "raffle_id",
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id",
+            "organization_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "drawings_id_raffle_uq": {
+          "name": "drawings_id_raffle_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "raffle_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "drawings_completed_has_date": {
+          "name": "drawings_completed_has_date",
+          "value": "\"drawings\".\"status\" <> 'completed' or \"drawings\".\"performed_at\" is not null"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.simulation_draws": {
+      "name": "simulation_draws",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "raffle_id": {
+          "name": "raffle_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_simulation": {
+          "name": "is_simulation",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "prize_position": {
+          "name": "prize_position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "prize_title": {
+          "name": "prize_title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "folio": {
+          "name": "folio",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "local_number": {
+          "name": "local_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "eligible_before": {
+          "name": "eligible_before",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "folio_weight": {
+          "name": "folio_weight",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "folios_in_play": {
+          "name": "folios_in_play",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "weights_before": {
+          "name": "weights_before",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "drawn_at": {
+          "name": "drawn_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "simulation_draws_run_idx": {
+          "name": "simulation_draws_run_idx",
+          "columns": [
+            {
+              "expression": "run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "simulation_draws_run_fk": {
+          "name": "simulation_draws_run_fk",
+          "tableFrom": "simulation_draws",
+          "tableTo": "simulation_runs",
+          "columnsFrom": [
+            "run_id",
+            "raffle_id"
+          ],
+          "columnsTo": [
+            "id",
+            "raffle_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "simulation_draws_raffle_org_fk": {
+          "name": "simulation_draws_raffle_org_fk",
+          "tableFrom": "simulation_draws",
+          "tableTo": "raffles",
+          "columnsFrom": [
+            "raffle_id",
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id",
+            "organization_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "simulation_draws_prize_uq": {
+          "name": "simulation_draws_prize_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "run_id",
+            "prize_position"
+          ]
+        },
+        "simulation_draws_participation_uq": {
+          "name": "simulation_draws_participation_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "run_id",
+            "folio",
+            "local_number"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "simulation_draws_is_simulation": {
+          "name": "simulation_draws_is_simulation",
+          "value": "\"simulation_draws\".\"is_simulation\" = true"
+        },
+        "simulation_draws_ranges": {
+          "name": "simulation_draws_ranges",
+          "value": "\"simulation_draws\".\"prize_position\" >= 1 and \"simulation_draws\".\"folio\" >= 1 and \"simulation_draws\".\"local_number\" >= 1 and \"simulation_draws\".\"folio_weight\" >= 1 and \"simulation_draws\".\"eligible_before\" >= \"simulation_draws\".\"folio_weight\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.simulation_runs": {
+      "name": "simulation_runs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "raffle_id": {
+          "name": "raffle_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_simulation": {
+          "name": "is_simulation",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "rules_version": {
+          "name": "rules_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "total_eligible": {
+          "name": "total_eligible",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "prize_count": {
+          "name": "prize_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "snapshot": {
+          "name": "snapshot",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "snapshot_hash": {
+          "name": "snapshot_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "result_hash": {
+          "name": "result_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "simulation_runs_raffle_created_idx": {
+          "name": "simulation_runs_raffle_created_idx",
+          "columns": [
+            {
+              "expression": "raffle_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "simulation_runs_raffle_org_fk": {
+          "name": "simulation_runs_raffle_org_fk",
+          "tableFrom": "simulation_runs",
+          "tableTo": "raffles",
+          "columnsFrom": [
+            "raffle_id",
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id",
+            "organization_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "simulation_runs_id_raffle_uq": {
+          "name": "simulation_runs_id_raffle_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "raffle_id"
+          ]
+        },
+        "simulation_runs_idem_uq": {
+          "name": "simulation_runs_idem_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "raffle_id",
+            "idempotency_key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "simulation_runs_is_simulation": {
+          "name": "simulation_runs_is_simulation",
+          "value": "\"simulation_runs\".\"is_simulation\" = true"
+        },
+        "simulation_runs_source": {
+          "name": "simulation_runs_source",
+          "value": "\"simulation_runs\".\"source\" in ('raffle_config', 'synthetic')"
+        },
+        "simulation_runs_counts": {
+          "name": "simulation_runs_counts",
+          "value": "\"simulation_runs\".\"total_eligible\" > 0 and \"simulation_runs\".\"prize_count\" between 1 and 50 and \"simulation_runs\".\"prize_count\" <= \"simulation_runs\".\"total_eligible\""
+        },
+        "simulation_runs_hashes": {
+          "name": "simulation_runs_hashes",
+          "value": "\"simulation_runs\".\"snapshot_hash\" ~ '^[0-9a-f]{64}$' and \"simulation_runs\".\"result_hash\" ~ '^[0-9a-f]{64}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.winners": {
+      "name": "winners",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "drawing_id": {
+          "name": "drawing_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "raffle_id": {
+          "name": "raffle_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "order_item_id": {
+          "name": "order_item_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "prize_id": {
+          "name": "prize_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "redemption_status": {
+          "name": "redemption_status",
+          "type": "redemption_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "redeemed_at": {
+          "name": "redeemed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "winners_drawing_idx": {
+          "name": "winners_drawing_idx",
+          "columns": [
+            {
+              "expression": "drawing_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "winners_raffle_org_fk": {
+          "name": "winners_raffle_org_fk",
+          "tableFrom": "winners",
+          "tableTo": "raffles",
+          "columnsFrom": [
+            "raffle_id",
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id",
+            "organization_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "winners_drawing_fk": {
+          "name": "winners_drawing_fk",
+          "tableFrom": "winners",
+          "tableTo": "drawings",
+          "columnsFrom": [
+            "drawing_id",
+            "raffle_id"
+          ],
+          "columnsTo": [
+            "id",
+            "raffle_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "winners_prize_fk": {
+          "name": "winners_prize_fk",
+          "tableFrom": "winners",
+          "tableTo": "prizes",
+          "columnsFrom": [
+            "prize_id",
+            "raffle_id"
+          ],
+          "columnsTo": [
+            "id",
+            "raffle_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "winners_order_item_fk": {
+          "name": "winners_order_item_fk",
+          "tableFrom": "winners",
+          "tableTo": "order_items",
+          "columnsFrom": [
+            "order_item_id",
+            "raffle_id"
+          ],
+          "columnsTo": [
+            "id",
+            "raffle_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "winners_prize_item_uq": {
+          "name": "winners_prize_item_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "prize_id",
+            "order_item_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "winners_redemption_consistent": {
+          "name": "winners_redemption_consistent",
+          "value": "(\"winners\".\"redemption_status\" = 'redeemed') = (\"winners\".\"redeemed_at\" is not null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.audit_events": {
+      "name": "audit_events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "entity_type": {
+          "name": "entity_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entity_id": {
+          "name": "entity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "audit_events_org_created_idx": {
+          "name": "audit_events_org_created_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "audit_events_entity_idx": {
+          "name": "audit_events_entity_idx",
+          "columns": [
+            {
+              "expression": "entity_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "entity_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "audit_events_metadata_object": {
+          "name": "audit_events_metadata_object",
+          "value": "jsonb_typeof(\"audit_events\".\"metadata\") = 'object'"
+        },
+        "audit_events_action_len": {
+          "name": "audit_events_action_len",
+          "value": "char_length(\"audit_events\".\"action\") between 1 and 100"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.drawing_status": {
+      "name": "drawing_status",
+      "schema": "public",
+      "values": [
+        "pending",
+        "completed",
+        "voided"
+      ]
+    },
+    "public.member_role": {
+      "name": "member_role",
+      "schema": "public",
+      "values": [
+        "owner",
+        "admin",
+        "editor",
+        "viewer"
+      ]
+    },
+    "public.member_status": {
+      "name": "member_status",
+      "schema": "public",
+      "values": [
+        "invited",
+        "active",
+        "suspended",
+        "removed"
+      ]
+    },
+    "public.number_status": {
+      "name": "number_status",
+      "schema": "public",
+      "values": [
+        "available",
+        "reserved",
+        "sold"
+      ]
+    },
+    "public.numbering_mode": {
+      "name": "numbering_mode",
+      "schema": "public",
+      "values": [
+        "individual",
+        "booklets"
+      ]
+    },
+    "public.order_status": {
+      "name": "order_status",
+      "schema": "public",
+      "values": [
+        "draft",
+        "pending",
+        "confirmed",
+        "cancelled",
+        "expired"
+      ]
+    },
+    "public.organization_status": {
+      "name": "organization_status",
+      "schema": "public",
+      "values": [
+        "active",
+        "suspended",
+        "archived"
+      ]
+    },
+    "public.organization_type": {
+      "name": "organization_type",
+      "schema": "public",
+      "values": [
+        "individual",
+        "school"
+      ]
+    },
+    "public.raffle_status": {
+      "name": "raffle_status",
+      "schema": "public",
+      "values": [
+        "draft",
+        "published",
+        "closed",
+        "drawn"
+      ]
+    },
+    "public.redemption_status": {
+      "name": "redemption_status",
+      "schema": "public",
+      "values": [
+        "pending",
+        "redeemed"
+      ]
+    },
+    "public.seller_status": {
+      "name": "seller_status",
+      "schema": "public",
+      "values": [
+        "active",
+        "revoked"
+      ]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
