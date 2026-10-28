@@ -1,14 +1,19 @@
 "use client";
 
 import Image from "next/image";
-import { useActionState, useState } from "react";
-import { removeImageAction, uploadImageAction, type RaffleFormState } from "./actions";
+import { useRef, useState, useTransition } from "react";
+import { removeImageAction, uploadImageAction } from "./actions";
 
 // Constantes duplicadas a propósito: este módulo es de cliente y no debe importar sharp.
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
-/** Imagen opcional de la rifa o de un premio (solo editable en borrador). */
+type Feedback = { kind: "error" | "ok"; text: string } | null;
+
+/**
+ * Imagen opcional de la rifa o de un premio (solo editable en borrador).
+ * Al elegir un archivo se sube y guarda automaticamente; si falla se conserva la imagen anterior.
+ */
 export function ImageControl({
   raffleId,
   prizeId,
@@ -23,21 +28,53 @@ export function ImageControl({
   label: string;
 }) {
   const kind = prizeId ? "prize" : "raffle";
-  const [up, upAction, upPending] = useActionState<RaffleFormState, FormData>(uploadImageAction, {});
-  const [rm, rmAction, rmPending] = useActionState<RaffleFormState, FormData>(removeImageAction, {});
-  const [localError, setLocalError] = useState<string | null>(null);
-  const msg = localError ?? up.error ?? rm.error;
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, startTransition] = useTransition();
+  const [working, setWorking] = useState<"upload" | "remove" | null>(null);
+  const [feedback, setFeedback] = useState<Feedback>(null);
 
-  function checkFile(file: File | undefined) {
-    if (!file) return setLocalError(null);
-    if (!ALLOWED_TYPES.includes(file.type)) return setLocalError("Formato no permitido. Use JPEG, PNG o WebP.");
-    if (file.size > MAX_IMAGE_BYTES) {
-      return setLocalError(
-        `La imagen pesa ${(file.size / 1024 / 1024).toFixed(1)} MB y supera el máximo de 3 MB. Reduzca su tamaño e inténtelo de nuevo.`,
-      );
-    }
-    setLocalError(null);
+  function baseForm() {
+    const fd = new FormData();
+    fd.set("raffleId", raffleId);
+    fd.set("kind", kind);
+    if (prizeId) fd.set("prizeId", prizeId);
+    return fd;
   }
+
+  function run(mode: "upload" | "remove", fd: FormData) {
+    setWorking(mode);
+    setFeedback(null);
+    startTransition(async () => {
+      try {
+        const res = mode === "upload" ? await uploadImageAction({}, fd) : await removeImageAction({}, fd);
+        if (res.error) setFeedback({ kind: "error", text: res.error });
+        else setFeedback({ kind: "ok", text: res.ok ?? "Listo." });
+      } catch {
+        setFeedback({ kind: "error", text: "No se pudo completar la operación. Se conservó la imagen anterior. Inténtelo de nuevo." });
+      } finally {
+        setWorking(null);
+      }
+    });
+  }
+
+  function onFileChosen(input: HTMLInputElement) {
+    const file = input.files?.[0];
+    if (!file || busy) return;
+    let error: string | null = null;
+    if (!ALLOWED_TYPES.includes(file.type)) error = "Formato no permitido. Use JPEG, PNG o WebP.";
+    else if (file.size > MAX_IMAGE_BYTES) {
+      error = `La imagen pesa ${(file.size / 1024 / 1024).toFixed(1)} MB y supera el máximo de 3 MB. Reduzca su tamaño e inténtelo de nuevo.`;
+    }
+    if (error) {
+      setFeedback({ kind: "error", text: `${error} Se conservó la imagen anterior.` });
+    } else {
+      const fd = baseForm();
+      fd.set("image", file);
+      run("upload", fd);
+    }
+    input.value = ""; // permite volver a elegir el mismo archivo
+  }
+
   return (
     <div className="space-y-2">
       <div className="relative aspect-video w-full max-w-xs overflow-hidden rounded-xl bg-sky-100">
@@ -46,50 +83,58 @@ export function ImageControl({
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-muted">Sin imagen</div>
         )}
+        {working === "upload" && (
+          <div
+            role="status"
+            className="absolute inset-0 flex items-center justify-center bg-white/80 text-sm font-semibold text-navy-900"
+          >
+            Subiendo imagen…
+          </div>
+        )}
       </div>
       {editable && (
         <div className="space-y-2">
-          <form action={upAction} className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <input type="hidden" name="raffleId" value={raffleId} />
-            <input type="hidden" name="kind" value={kind} />
-            {prizeId && <input type="hidden" name="prizeId" value={prizeId} />}
-            <label className="text-sm">
-              <span className="sr-only">{label}</span>
-              <input
-                type="file"
-                name="image"
-                accept="image/jpeg,image/png,image/webp"
-                required
-                onChange={(e) => checkFile(e.target.files?.[0])}
-                aria-invalid={localError ? true : undefined}
-                className="block w-full text-sm file:mr-3 file:min-h-11 file:rounded-xl file:border-0 file:bg-navy-900 file:px-4 file:text-white"
-              />
-            </label>
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            aria-label={label}
+            className="sr-only"
+            tabIndex={-1}
+            disabled={busy}
+            onChange={(e) => onFileChosen(e.currentTarget)}
+          />
+          <div className="flex flex-wrap items-center gap-3">
             <button
-              type="submit"
-              disabled={upPending || Boolean(localError)}
+              type="button"
+              disabled={busy}
+              onClick={() => inputRef.current?.click()}
               className="min-h-11 rounded-xl border border-navy-900/20 bg-white px-4 text-sm font-semibold text-navy-900 hover:bg-sky-100 disabled:opacity-60"
             >
-              {upPending ? "Subiendo…" : imageKey ? "Reemplazar" : "Subir imagen"}
+              {working === "upload" ? "Subiendo imagen…" : imageKey ? "Reemplazar imagen" : "Seleccionar imagen"}
             </button>
-          </form>
-          {imageKey && (
-            <form action={rmAction}>
-              <input type="hidden" name="raffleId" value={raffleId} />
-              <input type="hidden" name="kind" value={kind} />
-              {prizeId && <input type="hidden" name="prizeId" value={prizeId} />}
-              <button type="submit" disabled={rmPending} className="min-h-11 text-sm font-semibold text-red-700 underline">
-                Quitar imagen
+            {imageKey && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => run("remove", baseForm())}
+                className="min-h-11 text-sm font-semibold text-red-700 underline disabled:opacity-60"
+              >
+                {working === "remove" ? "Quitando…" : "Quitar imagen"}
               </button>
-            </form>
-          )}
+            )}
+          </div>
           <p className="text-xs text-muted">JPEG, PNG o WebP, hasta 3 MB, mínimo 200×200 px. Se eliminan los metadatos.</p>
-          {msg && (
+          {feedback?.kind === "error" && (
             <p role="alert" className="text-sm text-red-700">
-              {msg}
+              {feedback.text}
             </p>
           )}
-          {!msg && (up.ok || rm.ok) && <p role="status" className="text-sm text-green-800">{up.ok ?? rm.ok}</p>}
+          {feedback?.kind === "ok" && (
+            <p role="status" className="text-sm text-green-800">
+              {feedback.text}
+            </p>
+          )}
         </div>
       )}
     </div>
