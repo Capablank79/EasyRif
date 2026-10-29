@@ -6,6 +6,7 @@ import type { Database } from "@/platform/db/types";
 import { keyWidths } from "./booklets";
 import { listBookletSummaries, listPublicNumbers, type BookletSummary } from "@/modules/reservations/service";
 import { slugify, type RaffleInput } from "./validation";
+import { getAppTimeZone, utcToZonedDateInput } from "./campaign";
 
 export type RaffleErrorCode = "not_found" | "state" | "invalid";
 
@@ -70,6 +71,7 @@ export interface RaffleListItem {
   realRevenueCents: number;
   unassignedBooklets: number;
   salesClosesAt: Date | null;
+  drawAt: Date | null;
   currency: string;
   numberCount: number;
   numberingMode: RaffleRow["numberingMode"];
@@ -84,7 +86,7 @@ export async function listRaffles(db: Database, userId: string, organizationId: 
     id: string; title: string; slug: string; status: RaffleRow["status"];
     prize_count: number | string; number_total: number | string; number_count: number | string;
     numbering_mode: RaffleRow["numberingMode"]; booklet_count: number | null; numbers_per_booklet: number | null;
-    created_at: Date | string; sales_closes_at: Date | string | null; available_numbers: number | string; active_reservations: number | string;
+    created_at: Date | string; sales_closes_at: Date | string | null; draw_at: Date | string | null; available_numbers: number | string; active_reservations: number | string;
     simulated_sold: number | string; real_sold: number | string; sold_percent: number | string;
     simulated_revenue: number | string; real_revenue: number | string; unassigned_booklets: number | string; currency: string;
   };
@@ -119,7 +121,7 @@ export async function listRaffles(db: Database, userId: string, organizationId: 
       FROM "booklets" b WHERE b."organization_id" = ${organizationId} GROUP BY b."raffle_id"
     )
     SELECT r."id", r."title", r."slug", r."status", r."number_count", r."numbering_mode",
-      r."booklet_count", r."numbers_per_booklet", r."created_at", r."currency", r."sales_closes_at",
+      r."booklet_count", r."numbers_per_booklet", r."created_at", r."currency", r."sales_closes_at", r."draw_at",
       coalesce(pc.prize_count, 0)::int AS prize_count,
       coalesce(nc.number_total, 0)::int AS number_total,
       coalesce(nc.available_numbers, 0)::int AS available_numbers,
@@ -156,6 +158,7 @@ export async function listRaffles(db: Database, userId: string, organizationId: 
     realRevenueCents: Number(r.real_revenue),
     unassignedBooklets: Number(r.unassigned_booklets),
     salesClosesAt: r.sales_closes_at ? new Date(r.sales_closes_at) : null,
+    drawAt: r.draw_at ? new Date(r.draw_at) : null,
     currency: r.currency,
     numberCount: Number(r.number_count),
     numberingMode: r.numbering_mode,
@@ -283,6 +286,13 @@ export async function updateRaffle(db: Database, userId: string, raffleId: strin
         throw new RaffleError("state", "Los números ya fueron generados: no se puede cambiar la numeración.");
       }
     }
+    const tz = getAppTimeZone();
+    const oldScheduleDate = utcToZonedDateInput(r.drawAt ?? r.endsAt, tz);
+    const requestedScheduleDate = utcToZonedDateInput(input.drawAt ?? input.drawDate, tz);
+    const scheduleChanged = oldScheduleDate !== requestedScheduleDate;
+    if (scheduleChanged && (!input.salesClosesAt || input.salesClosesAt.getTime() <= Date.now())) {
+      throw new RaffleError("invalid", "El cierre de ventas de la nueva fecha debe estar en el futuro.");
+    }
     await tx
       .update(raffles)
       .set({
@@ -295,9 +305,11 @@ export async function updateRaffle(db: Database, userId: string, raffleId: strin
         bookletCount: input.bookletCount ?? null,
         numbersPerBooklet: input.numbersPerBooklet ?? null,
         firstFolio: input.firstFolio ?? null,
-        salesClosesAt: input.salesClosesAt ?? null,
-        drawAt: input.drawAt ?? null,
-        endsAt: input.drawDate,
+        ...(scheduleChanged ? {
+          salesClosesAt: input.salesClosesAt ?? null,
+          drawAt: input.drawAt ?? null,
+          endsAt: input.drawDate,
+        } : {}),
       })
       .where(and(eq(raffles.id, r.id), eq(raffles.organizationId, r.organizationId)));
     await recordAuditEvent(asDb(tx), {

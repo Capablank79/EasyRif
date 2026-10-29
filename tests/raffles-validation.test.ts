@@ -8,7 +8,7 @@ import {
   minorToInput,
 } from "@/modules/raffles/validation";
 
-const base = { title: "Rifa", description: "", price: "1000", currency: "CLP", numberCount: "100", drawDate: "" };
+const base = { title: "Rifa", description: "", price: "1000", currency: "CLP", numberCount: "100", drawDate: "2030-05-20" };
 
 describe("parsePrice", () => {
   it("CLP sin decimales", () => {
@@ -34,11 +34,13 @@ describe("parsePrice", () => {
 
 describe("validateRaffleForm", () => {
   it("acepta datos válidos", () => {
-    const r = validateRaffleForm({ ...base, drawDate: "2030-05-20" });
+    const r = validateRaffleForm(base);
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.values.priceMinor).toBe(1000);
-      expect(r.values.drawDate?.toISOString()).toBe("2030-05-20T23:59:59.000Z");
+      expect(r.values.drawDate?.toISOString()).toBe("2030-05-21T02:30:00.000Z");
+      expect(r.values.salesClosesAt?.toISOString()).toBe("2030-05-21T02:00:00.000Z");
+      expect(r.values.drawAt?.toISOString()).toBe("2030-05-21T02:30:00.000Z");
     }
   });
   it("valida título, cantidad, moneda y fecha", () => {
@@ -50,6 +52,12 @@ describe("validateRaffleForm", () => {
     expect(validateRaffleForm({ ...base, numberCount: "101" }, 100).ok).toBe(false);
     expect(validateRaffleForm({ ...base, numberCount: "100" }, 100).ok).toBe(true);
     expect(validateRaffleForm({ ...base, numberCount: "10.5" }).ok).toBe(false);
+  });
+  it("exige que el cierre automático de las 22:00 sea futuro al crear", () => {
+    const date = "2030-05-20";
+    expect(validateRaffleForm({ ...base, drawDate: date }, 100, undefined, "America/Santiago", { now: new Date("2030-05-21T02:00:00.000Z") }).ok).toBe(false);
+    expect(validateRaffleForm({ ...base, drawDate: date }, 100, undefined, "America/Santiago", { now: new Date("2030-05-21T01:59:59.999Z") }).ok).toBe(true);
+    expect(validateRaffleForm({ ...base, drawDate: "" }).ok).toBe(false);
   });
   it("máximo por entorno con tope absoluto", () => {
     expect(getMaxRaffleNumbers({})).toBe(10000);

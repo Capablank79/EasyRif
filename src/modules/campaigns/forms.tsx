@@ -156,15 +156,10 @@ export function ExtendForm({ raffleId, timeZone }: { raffleId: string; timeZone:
     <form action={action} className="space-y-3">
       <input type="hidden" name="raffleId" value={raffleId} />
       <Msg state={state} />
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div>
-          <L htmlFor="ext-close">Nuevo cierre de ventas ({timeZone})</L>
-          <input id="ext-close" name="salesClosesAt" type="datetime-local" required className={inputCls} />
-        </div>
-        <div>
-          <L htmlFor="ext-draw">Nueva fecha de sorteo</L>
-          <input id="ext-draw" name="drawAt" type="datetime-local" required className={inputCls} />
-        </div>
+      <div>
+        <L htmlFor="ext-date">Nueva fecha de cierre</L>
+        <input id="ext-date" name="drawDate" type="date" required className={inputCls} />
+        <p className="mt-1 text-xs text-muted">El cierre quedará a las 22:00 y el sorteo a las 22:30 ({timeZone}).</p>
       </div>
       <div>
         <L htmlFor="ext-reason">Motivo (queda auditado)</L>

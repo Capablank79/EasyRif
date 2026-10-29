@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   computeCampaignState,
+  campaignScheduleForDate,
   formatZoned,
   getAppTimeZone,
   isSalesClosed,
@@ -32,6 +33,7 @@ describe("fechas de campaña y zona horaria", () => {
     expect(formatZoned(new Date("2030-01-15T21:00:00Z"), TZ)).toContain("GMT-3");
   });
   it("valida orden: el sorteo es posterior al cierre y el cierre debe ser futuro", () => {
+    expect(validateCampaignDates({ salesClosesAt: "2030-02-01T22:00", drawAt: "2030-02-01T22:30" }, TZ, now).ok).toBe(true);
     expect(validateCampaignDates({ salesClosesAt: "2030-02-01T10:00", drawAt: "2030-02-10T10:00" }, TZ, now).ok).toBe(true);
     expect(validateCampaignDates({ salesClosesAt: "2030-02-10T10:00", drawAt: "2030-02-01T10:00" }, TZ, now).ok).toBe(false);
     expect(validateCampaignDates({ salesClosesAt: "2030-02-01T10:00", drawAt: "2030-02-01T10:00" }, TZ, now).ok).toBe(false);
@@ -40,13 +42,29 @@ describe("fechas de campaña y zona horaria", () => {
       validateCampaignDates({ salesClosesAt: "2029-12-01T10:00", drawAt: "2030-02-10T10:00" }, TZ, now, { requireFutureClose: true }).ok,
     ).toBe(false);
   });
-  it("APP_TIMEZONE inválida cae al valor por defecto", () => {
+  it("la zona de horario comercial está fija en Santiago", () => {
     expect(getAppTimeZone({ APP_TIMEZONE: "No/Existe" })).toBe(TZ);
-    expect(getAppTimeZone({ APP_TIMEZONE: "America/Bogota" })).toBe("America/Bogota");
+    expect(getAppTimeZone({ APP_TIMEZONE: "America/Bogota" })).toBe(TZ);
+  });
+  it("calcula 22:00 y 22:30 con offsets correctos en ambos cambios DST", () => {
+    expect(campaignScheduleForDate("2026-04-04", TZ)).toEqual({
+      salesClosesAt: new Date("2026-04-05T01:00:00.000Z"), drawAt: new Date("2026-04-05T01:30:00.000Z"),
+    });
+    expect(campaignScheduleForDate("2026-04-05", TZ)).toEqual({
+      salesClosesAt: new Date("2026-04-06T02:00:00.000Z"), drawAt: new Date("2026-04-06T02:30:00.000Z"),
+    });
+    expect(campaignScheduleForDate("2026-09-05", TZ)).toEqual({
+      salesClosesAt: new Date("2026-09-06T02:00:00.000Z"), drawAt: new Date("2026-09-06T02:30:00.000Z"),
+    });
+    expect(campaignScheduleForDate("2026-09-06", TZ)).toEqual({
+      salesClosesAt: new Date("2026-09-07T01:00:00.000Z"), drawAt: new Date("2026-09-07T01:30:00.000Z"),
+    });
   });
   it("estado de campaña y cierre de ventas", () => {
     expect(isSalesClosed(null, now)).toBe(false);
     expect(isSalesClosed(new Date("2029-01-01T00:00:00Z"), now)).toBe(true);
+    expect(isSalesClosed(now, now)).toBe(true);
+    expect(isSalesClosed(new Date(now.getTime() + 1), now)).toBe(false);
     const open = computeCampaignState(
       { salesClosesAt: new Date("2030-02-01T00:00:00Z"), drawAt: new Date("2030-02-10T00:00:00Z") },
       { total: 200, available: 200, reservedDemo: 0, sold: 0 },

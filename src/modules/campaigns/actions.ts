@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/modules/auth/session";
 import { AuthorizationError } from "@/modules/organizations/permissions";
-import { getAppTimeZone, parseFolioList, validateCampaignDates } from "@/modules/raffles/campaign";
+import { campaignScheduleForDate, getAppTimeZone, parseFolioList } from "@/modules/raffles/campaign";
 import { UUID_RE } from "@/modules/raffles/validation";
 import { getDb } from "@/platform/db/client";
 import { CampaignError, assignBooklets, createSeller, extendSalesClose, revokeSeller, unassignBooklets } from "./service";
@@ -119,12 +119,10 @@ export async function revokeSellerAction(_: CampaignFormState, fd: FormData) {
 
 export async function extendSalesAction(_: CampaignFormState, fd: FormData) {
   return run(fd, async (u, r) => {
-    const v = validateCampaignDates(
-      { salesClosesAt: str(fd, "salesClosesAt"), drawAt: str(fd, "drawAt") },
-      getAppTimeZone(),
-    );
-    if (!v.ok) throw new CampaignError("invalid", Object.values(v.errors).join(" "));
-    await extendSalesClose(getDb(), u, r, { ...v.value, reason: str(fd, "reason") });
+    const schedule = campaignScheduleForDate(str(fd, "drawDate"), getAppTimeZone());
+    if (!schedule) throw new CampaignError("invalid", "Selecciona una fecha válida para el cierre.");
+    if (schedule.salesClosesAt.getTime() <= Date.now()) throw new CampaignError("invalid", "El cierre de ventas debe estar en el futuro.");
+    await extendSalesClose(getDb(), u, r, { ...schedule, reason: str(fd, "reason") });
     return "Plazo extendido y registrado en auditoría.";
   });
 }

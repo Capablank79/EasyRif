@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef, useState, type ChangeEvent, type Rea
 import { Button } from "@/components/ui/button";
 import { ImageControl } from "./image-control";
 import { CREATE_STEPS, firstStepWithError, missingRequiredInStep, type CreateStepId } from "./guidance";
+import { campaignScheduleForDate } from "./campaign";
 import {
   addPrizeAction,
   createRaffleAction,
@@ -26,9 +27,7 @@ const FIELD_LABEL: Record<string, string> = {
   bookletCount: "Cantidad de talonarios",
   numbersPerBooklet: "Números por talonario",
   firstFolio: "Folio inicial",
-  drawDate: "Fecha estimada del sorteo",
-  salesClosesAt: "Cierre de ventas",
-  drawAt: "Fecha del sorteo",
+  drawDate: "Fecha del sorteo",
 };
 
 const inputCls =
@@ -91,8 +90,6 @@ export interface RaffleFormValues {
   bookletCount?: string;
   numbersPerBooklet?: string;
   firstFolio?: string;
-  salesClosesAt?: string;
-  drawAt?: string;
 }
 
 export function RaffleForm({
@@ -131,8 +128,6 @@ export function RaffleForm({
     bookletCount: defaults.bookletCount ?? "10",
     numbersPerBooklet: defaults.numbersPerBooklet ?? "20",
     firstFolio: defaults.firstFolio ?? "1",
-    salesClosesAt: defaults.salesClosesAt ?? "",
-    drawAt: defaults.drawAt ?? "",
   });
   const set =
     (k: keyof typeof v) => (ev: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
@@ -180,13 +175,27 @@ export function RaffleForm({
     setClientErrors({});
     if (step > 1) setStep((step - 1) as CreateStepId);
   }
-  const dt = (s: string) => (s ? s.replace("T", " ") : "Sin definir");
 
   return (
     <form
       action={action}
       className="space-y-5"
       noValidate
+      onSubmit={(ev) => {
+        const errors: Record<string, string> = {};
+        if (!v.drawDate.trim()) errors.drawDate = "Elige la fecha del sorteo.";
+        else if (isCreate || v.drawDate !== defaults.drawDate) {
+          const schedule = campaignScheduleForDate(v.drawDate, timeZone);
+          if (!schedule || schedule.salesClosesAt.getTime() <= Date.now()) {
+            errors.drawDate = "El cierre de ventas a las 22:00 (hora de Santiago) debe estar en el futuro.";
+          }
+        }
+        if (Object.keys(errors).length) {
+          ev.preventDefault();
+          setClientErrors(errors);
+          setStep(3);
+        }
+      }}
       onKeyDown={(ev) => {
         // En el asistente, Enter avanza de paso en vez de enviar el formulario incompleto.
         const t = ev.target as HTMLElement;
@@ -368,19 +377,9 @@ export function RaffleForm({
           <h3 className="text-base font-semibold text-navy-900">Fechas</h3>
         )}
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Fecha estimada del sorteo (opcional)" name="drawDate" error={errs.drawDate} hint="Solo informativa.">
+          <Field label="Fecha del sorteo" name="drawDate" error={errs.drawDate} hint={`Selecciona un día. Cierre de ventas 22:00 y sorteo 22:30 (${timeZone}).`}>
             <input id="drawDate" name="drawDate" type="date" value={v.drawDate} onChange={set("drawDate")} className={inputCls} {...err("drawDate")} />
           </Field>
-          {numbering === "booklets" && (
-            <>
-              <Field label="Cierre de ventas" name="salesClosesAt" error={errs.salesClosesAt} hint={`Hora de ${timeZone}.`}>
-                <input id="salesClosesAt" name="salesClosesAt" type="datetime-local" required value={v.salesClosesAt} onChange={set("salesClosesAt")} className={inputCls} {...err("salesClosesAt")} />
-              </Field>
-              <Field label="Fecha del sorteo" name="drawAt" error={errs.drawAt} hint="Posterior al cierre. El sorteo no se ejecuta en esta fase.">
-                <input id="drawAt" name="drawAt" type="datetime-local" required value={v.drawAt} onChange={set("drawAt")} className={inputCls} {...err("drawAt")} />
-              </Field>
-            </>
-          )}
         </div>
         {isCreate && (
           <div className="rounded-xl border border-line bg-sky-50 p-3">
@@ -406,14 +405,14 @@ export function RaffleForm({
                 <dd className="font-semibold">{v.price ? `${v.price} ${v.currency}` : "Sin precio"}</dd>
               </div>
               <div>
-                <dt className="text-muted">Fecha estimada del sorteo</dt>
+                <dt className="text-muted">Fecha del sorteo</dt>
                 <dd className="font-semibold">{v.drawDate || "Sin definir"}</dd>
               </div>
-              {numbering === "booklets" && (
+              {v.drawDate && (
                 <div>
                   <dt className="text-muted">Cierre de ventas · Sorteo</dt>
                   <dd className="font-semibold">
-                    {dt(v.salesClosesAt)} · {dt(v.drawAt)}
+                    {v.drawDate} 22:00 · {v.drawDate} 22:30 ({timeZone})
                   </dd>
                 </div>
               )}

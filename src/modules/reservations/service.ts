@@ -109,23 +109,33 @@ export function isDemoPurchaseConfirmationEnabled(env: Record<string, string | u
 export async function expireStale(tx: Database, raffleId: string): Promise<void> {
   await tx.execute(sql`
     UPDATE "orders" SET "status" = 'expired', "updated_at" = now()
-    WHERE "raffle_id" = ${raffleId} AND "is_demo" AND "status" = 'pending' AND "expires_at" <= now()
+    WHERE "raffle_id" = ${raffleId} AND "is_demo" AND "status" = 'pending'
+      AND ("expires_at" <= now() OR EXISTS (SELECT 1 FROM "raffles" r
+        WHERE r."id" = "orders"."raffle_id" AND r."sales_closes_at" IS NOT NULL AND clock_timestamp() >= r."sales_closes_at"))
       AND NOT EXISTS (SELECT 1 FROM "audit_events" ae WHERE ae."organization_id" = "orders"."organization_id"
         AND ae."entity_type" = 'demo_purchase' AND ae."entity_id" = "orders"."id" AND ae."action" = 'demo.purchase_confirmed')`);
   await tx.execute(sql`
     UPDATE "raffle_numbers" SET "status" = 'available', "reservation_id" = NULL, "reserved_until" = NULL
-    WHERE "raffle_id" = ${raffleId} AND "status" = 'reserved' AND "reserved_until" <= now()`);
+    WHERE "raffle_id" = ${raffleId} AND "status" = 'reserved'
+      AND ("reserved_until" <= now() OR EXISTS (SELECT 1 FROM "orders" o
+        WHERE o."id" = "raffle_numbers"."reservation_id" AND o."status" = 'expired'))`);
+}
+
+/** Expira reservas en una lectura de disponibilidad, incluidas las que alcanzaron el cierre comercial. */
+export async function expireCampaignReservations(db: Database, raffleId: string): Promise<void> {
+  await db.transaction(async (tx) => expireStale(asDb(tx), raffleId));
 }
 
 async function loadView(tx: Database, orderId: string): Promise<ReservationView> {
   const [o] = rowsOf<{
     id: string; status: ReservationView["status"]; total_cents: number; currency: string;
     expires_at: Date | string; title: string; slug: string; seller_id: string | null;
-    price_cents: number; raffle_status: string; simulation_confirmed_at: Date | string | null; simulation_paid_at: Date | string | null;
+    price_cents: number; raffle_status: string; sales_open: boolean; simulation_confirmed_at: Date | string | null; simulation_paid_at: Date | string | null;
   }>(
     await tx.execute(sql`
       SELECT o."id", o."status", o."total_cents", o."currency", o."expires_at", o."seller_id",
         r."title", r."slug", r."price_cents", r."status" AS raffle_status,
+        (r."sales_closes_at" IS NULL OR clock_timestamp() < r."sales_closes_at") AS sales_open,
         (SELECT ae."created_at" FROM "audit_events" ae WHERE ae."organization_id" = o."organization_id"
           AND ae."entity_type" = 'demo_purchase' AND ae."entity_id" = o."id" AND ae."action" = 'demo.purchase_confirmed'
           ORDER BY ae."created_at" LIMIT 1) AS simulation_confirmed_at,
@@ -155,7 +165,7 @@ async function loadView(tx: Database, orderId: string): Promise<ReservationView>
     raffleTitle: o.title,
     raffleSlug: o.slug,
     isDemo: true,
-    canConfirmSimulation: o.status === "pending" && o.raffle_status === "published",
+    canConfirmSimulation: o.status === "pending" && o.raffle_status === "published" && o.sales_open,
     simulationConfirmedAt: o.simulation_confirmed_at ? new Date(o.simulation_confirmed_at) : null,
     simulationPaidAt: o.simulation_paid_at ? new Date(o.simulation_paid_at) : null,
   };
@@ -206,11 +216,12 @@ export async function reserveNumbers(
     }>(
       await tx.execute(sql`
         SELECT "id", "organization_id", "price_cents", "currency", "numbering_mode",
-               ("sales_closes_at" IS NOT NULL AND now() >= "sales_closes_at") AS closed
+               ("sales_closes_at" IS NOT NULL AND clock_timestamp() >= "sales_closes_at") AS closed
         FROM "raffles"
         WHERE "slug" = ${input.slug} AND "status" = 'published' FOR SHARE`),
     );
     if (!raffle) throw new ReservationError("not_found", "La rifa no esta disponible.");
+    if (raffle.closed) throw new ReservationError("state", "Las ventas de esta campaña ya cerraron.");
 
     // Reintento idempotente: mismo pedido, sin tocar numeros.
     const [prior] = rowsOf<{ id: string }>(
@@ -223,8 +234,6 @@ export async function reserveNumbers(
         throw new ReservationError("conflict", "Esta solicitud ya se uso con otra seleccion.");
       return { token, reservation: view, replay: true };
     }
-
-    if (raffle.closed) throw new ReservationError("state", "Las ventas de esta campaña ya cerraron.");
 
     // Cada número debe conservar el vínculo con su participante, también en rifas individuales.
     const participants = new Map<string, ParticipantValue>();
@@ -357,9 +366,10 @@ export async function confirmSimulatedPurchase(
     if (!initial) throw new ReservationError("not_found", "Reserva no encontrada.");
 
     // Serializa con asignaciones y otras confirmaciones de esta rifa; el registro es idempotente.
-    const [raffle] = rowsOf<{ id: string; numbering_mode: string; status: string }>(
+    const [raffle] = rowsOf<{ id: string; numbering_mode: string; status: string; sales_closes_at: Date | string | null; sales_closed: boolean }>(
       await tx.execute(sql`
-        SELECT "id", "numbering_mode", "status" FROM "raffles"
+        SELECT "id", "numbering_mode", "status", "sales_closes_at",
+          ("sales_closes_at" IS NOT NULL AND clock_timestamp() >= "sales_closes_at") AS sales_closed FROM "raffles"
         WHERE "id" = ${initial.raffle_id} AND "organization_id" = ${initial.organization_id} FOR UPDATE`),
     );
     if (!raffle || raffle.status !== "published") {
@@ -372,6 +382,10 @@ export async function confirmSimulatedPurchase(
         ORDER BY "created_at" LIMIT 1`),
     );
     if (prior) return { confirmedAt: new Date(prior.created_at), replay: true, raffleId: raffle.id };
+
+    if (raffle.sales_closed) {
+      throw new ReservationError("state", "Las ventas cerraron a las 22:00. La reserva pendiente venció y no se registró el pago simulado.");
+    }
 
     await expireStale(tx, raffle.id);
     const [order] = rowsOf<{ id: string; seller_id: string | null; status: string; expires_at: Date | string; total_cents: number; currency: string }>(

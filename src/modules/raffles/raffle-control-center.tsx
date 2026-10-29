@@ -9,6 +9,7 @@ import { CopyLink } from "@/modules/campaigns/copy-link";
 import { nextDraftAction } from "./guidance";
 import { STATUS_LABEL } from "./validation";
 import { formatMoney } from "./validation";
+import { formatZoned, getAppTimeZone } from "./campaign";
 import type { RaffleListItem } from "./service";
 
 type StatusFilter = "all" | RaffleListItem["status"];
@@ -36,6 +37,7 @@ export function RaffleControlCenter({
   appUrl: string;
   nowMs: number;
 }) {
+  const timeZone = getAppTimeZone();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [attentionOnly, setAttentionOnly] = useState(false);
@@ -138,7 +140,8 @@ export function RaffleControlCenter({
 
                   {(r.unassignedBooklets > 0 || days !== null) && <div className="mt-3 space-y-1">
                     {r.unassignedBooklets > 0 && <p className="rounded-lg bg-sky-50 p-2 text-sm text-navy-900">{r.unassignedBooklets} talonarios sin asignar{canManage && r.numberingMode === "booklets" && <Link href={`/panel/rifas/${r.id}/responsables#folios`} className="ml-1 font-semibold underline">Asignar</Link>}</p>}
-                    {days !== null && <p className="rounded-lg bg-amber-50 p-2 text-sm text-amber-950">Cierra {days === 0 ? "hoy" : days === 1 ? "mañana" : `en ${days} días`}{r.salesClosesAt && ` · ${new Date(r.salesClosesAt).toLocaleString("es-CL", { dateStyle: "medium", timeStyle: "short" })}`}</p>}
+                    {(r.salesClosesAt || r.drawAt) && <p className="text-xs text-muted">Cierre {r.salesClosesAt ? formatZoned(new Date(r.salesClosesAt), timeZone) : "sin definir"} · Sorteo {r.drawAt ? formatZoned(new Date(r.drawAt), timeZone) : "sin definir"}</p>}
+                    {days !== null && <p className="rounded-lg bg-amber-50 p-2 text-sm text-amber-950">Cierra {days === 0 ? "hoy" : days === 1 ? "mañana" : `en ${days} días`}</p>}
                   </div>}
 
                   <dl className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">

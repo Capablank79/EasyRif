@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { rateLimit } from "@/modules/reservations/rate-limit";
-import { getPublicCounts, listBookletSummaries, listPublicNumbers, type NumberFilter } from "@/modules/reservations/service";
+import { expireCampaignReservations, getPublicCounts, listBookletSummaries, listPublicNumbers, type NumberFilter } from "@/modules/reservations/service";
 import { getPublicRaffleWithId } from "@/modules/raffles/service";
 import { getSellerPortal } from "@/modules/campaigns/service";
 import { getDb } from "@/platform/db/client";
@@ -17,6 +17,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ slug: string }>
   const db = getDb();
   const raffle = await getPublicRaffleWithId(db, slug.slice(0, 120));
   if (!raffle) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
+  await expireCampaignReservations(db, raffle.id);
   const sp = new URL(req.url).searchParams;
   const f = sp.get("filter") as NumberFilter;
   const folioRaw = sp.get("folio");

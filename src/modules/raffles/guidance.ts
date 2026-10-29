@@ -48,7 +48,7 @@ export function firstStepWithError(fieldErrors: Record<string, string | undefine
 /** Campos obligatorios vacios de un paso (solo ayuda previa; el servidor valida de verdad). */
 export function missingRequiredInStep(
   step: CreateStepId,
-  v: { title: string; price: string; numbering: "individual" | "booklets"; numberCount: string; bookletCount: string; numbersPerBooklet: string; salesClosesAt: string; drawAt: string },
+  v: { title: string; price: string; numbering: "individual" | "booklets"; numberCount: string; bookletCount: string; numbersPerBooklet: string; drawDate: string },
 ): Record<string, string> {
   const out: Record<string, string> = {};
   const empty = (s: string) => s.trim() === "";
@@ -63,10 +63,7 @@ export function missingRequiredInStep(
       if (empty(v.numbersPerBooklet)) out.numbersPerBooklet = "Indica cuántos números trae cada talonario. Ejemplo: 20.";
     }
   }
-  if (step === 3 && v.numbering === "booklets") {
-    if (empty(v.salesClosesAt)) out.salesClosesAt = "Elige cuándo se cierran las ventas.";
-    if (empty(v.drawAt)) out.drawAt = "Elige la fecha del sorteo.";
-  }
+  if (step === 3 && empty(v.drawDate)) out.drawDate = "Elige la fecha del sorteo.";
   return out;
 }
 

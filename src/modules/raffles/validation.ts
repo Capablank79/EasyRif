@@ -4,7 +4,7 @@ import {
   type BookletLimits,
   type NumberingMode,
 } from "./booklets";
-import { getAppTimeZone, validateCampaignDates } from "./campaign";
+import { campaignScheduleForDate, getAppTimeZone } from "./campaign";
 /** Límites técnicos configurables (no son límites comerciales). */
 const HARD_CAP = 100_000;
 const DEFAULT_MAX = 10_000;
@@ -115,7 +115,7 @@ export function validateRaffleForm(
   maxNumbers = getMaxRaffleNumbers(),
   bookletLimits?: BookletLimits,
   timeZone: string = getAppTimeZone(),
-  opts: { requireFutureClose?: boolean } = {},
+  opts: { requireFutureClose?: boolean; now?: Date } = {},
 ): { ok: true; values: RaffleInput } | { ok: false; errors: RaffleFieldErrors } {
   const errors: RaffleFieldErrors = {};
   const title = raw.title.trim();
@@ -163,24 +163,18 @@ export function validateRaffleForm(
   }
 
   let drawDate: Date | null = null;
-  const d = raw.drawDate.trim();
-  if (d) {
-    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
-    const date = m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], 23, 59, 59)) : null;
-    if (!m || !date || date.getUTCMonth() !== +m[2] - 1) errors.drawDate = "Fecha no válida.";
-    else drawDate = date;
-  }
-
   let dates: { salesClosesAt: Date; drawAt: Date } | null = null;
-  if (numbering === "booklets") {
-    const dv = validateCampaignDates(
-      { salesClosesAt: raw.salesClosesAt ?? "", drawAt: raw.drawAt ?? "" },
-      timeZone,
-      new Date(),
-      opts,
-    );
-    if (dv.ok) dates = dv.value;
-    else Object.assign(errors, dv.errors);
+  const d = raw.drawDate.trim();
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
+  const date = m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])) : null;
+  if (!m || !date || date.getUTCFullYear() !== +m[1] || date.getUTCMonth() !== +m[2] - 1 || date.getUTCDate() !== +m[3]) {
+    errors.drawDate = "Selecciona la fecha del sorteo.";
+  } else {
+    dates = campaignScheduleForDate(d, timeZone);
+    if (!dates) errors.drawDate = "Fecha no válida para la zona horaria de Santiago.";
+    else if ((opts.requireFutureClose ?? true) && dates.salesClosesAt.getTime() <= (opts.now ?? new Date()).getTime()) {
+      errors.drawDate = "El cierre de ventas (22:00, hora de Santiago) debe estar en el futuro.";
+    } else drawDate = dates.drawAt;
   }
 
   if (Object.keys(errors).length > 0) return { ok: false, errors };

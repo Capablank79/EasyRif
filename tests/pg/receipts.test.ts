@@ -199,4 +199,22 @@ describe.skipIf(!enabled)("Comprobante y verificacion (PostgreSQL real)", () => 
     const [{ sold }] = await mig`SELECT count(*)::int sold FROM raffle_numbers WHERE raffle_id = ${raffleId} AND status='sold'`;
     expect(sold).toBe(0);
   });
+
+  it("rechaza confirmaciones DEMO pendientes al cierre y libera la reserva", async () => {
+    const r = await reserve(["070"]);
+    await mig`ALTER TABLE raffles DISABLE TRIGGER raffles_guard_dates`;
+    try {
+      await mig`UPDATE raffles SET sales_closes_at = now(), draw_at = now() + interval '30 minutes' WHERE id = ${raffleId}`;
+    } finally {
+      await mig`ALTER TABLE raffles ENABLE TRIGGER raffles_guard_dates`;
+    }
+    await expect(svc.confirmSimulatedPurchase(db, r.token)).rejects.toMatchObject({ code: "state" });
+    const [{ pending }] = await mig`SELECT count(*)::int pending FROM audit_events WHERE entity_id = ${r.reservation.orderId} AND action = 'demo.purchase_confirmed'`;
+    expect(pending).toBe(0);
+    await svc.getReservation(db, r.token);
+    const [{ status }] = await mig`SELECT status FROM orders WHERE id = ${r.reservation.orderId}`;
+    const [{ numberStatus }] = await mig`SELECT status AS "numberStatus" FROM raffle_numbers WHERE raffle_id = ${raffleId} AND number = '070'`;
+    expect(status).toBe("expired");
+    expect(numberStatus).toBe("available");
+  });
 });

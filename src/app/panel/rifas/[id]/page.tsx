@@ -17,7 +17,7 @@ import {
   participationLabel,
   formatZoned,
   getAppTimeZone,
-  utcToZonedInput,
+  utcToZonedDateInput,
 } from "@/modules/raffles";
 import { AddPrizeForm, GenerateNumbersForm, PrizeItem, PublishForm, RaffleForm } from "@/modules/raffles/forms";
 import { ImageControl } from "@/modules/raffles/image-control";
@@ -105,9 +105,7 @@ export default async function RifaDetallePage({ params }: { params: Promise<{ id
                   bookletCount: r.bookletCount ? String(r.bookletCount) : undefined,
                   numbersPerBooklet: r.numbersPerBooklet ? String(r.numbersPerBooklet) : undefined,
                   firstFolio: r.firstFolio ? String(r.firstFolio) : undefined,
-                  drawDate: r.endsAt ? r.endsAt.toISOString().slice(0, 10) : "",
-                  salesClosesAt: utcToZonedInput(r.salesClosesAt, tz),
-                  drawAt: utcToZonedInput(r.drawAt, tz),
+                  drawDate: utcToZonedDateInput(r.drawAt ?? r.endsAt, tz),
                 }}
                 timeZone={tz}
                 currencies={Object.keys(CURRENCIES)}
@@ -133,10 +131,10 @@ export default async function RifaDetallePage({ params }: { params: Promise<{ id
                   </div>
                 )}
                 <div>
-                  <dt className="text-muted">Fecha estimada del sorteo</dt>
-                  <dd className="font-semibold">{r.endsAt ? r.endsAt.toISOString().slice(0, 10) : "Sin definir"}</dd>
+                  <dt className="text-muted">Fecha del sorteo</dt>
+                  <dd className="font-semibold">{utcToZonedDateInput(r.drawAt ?? r.endsAt, tz) || "Sin definir"}</dd>
                 </div>
-                {isBooklets && (
+                {(r.salesClosesAt || r.drawAt) && (
                   <div className="sm:col-span-2">
                     <dt className="text-muted">Cierre de ventas · Sorteo</dt>
                     <dd className="font-semibold">
@@ -274,11 +272,9 @@ export default async function RifaDetallePage({ params }: { params: Promise<{ id
                   <div>
                     <dt className="text-muted">Fechas</dt>
                     <dd className="font-semibold">
-                      {isBooklets
+                      {r.salesClosesAt || r.drawAt
                         ? `Cierre ${r.salesClosesAt ? formatZoned(r.salesClosesAt, tz) : "sin definir"} · Sorteo ${r.drawAt ? formatZoned(r.drawAt, tz) : "sin definir"}`
-                        : r.endsAt
-                          ? `Sorteo estimado ${r.endsAt.toISOString().slice(0, 10)}`
-                          : "Sin fecha de sorteo"}
+                        : utcToZonedDateInput(r.endsAt, tz) || "Sin fecha de sorteo"}
                     </dd>
                   </div>
                   <div>

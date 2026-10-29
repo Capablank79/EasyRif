@@ -309,6 +309,12 @@ describe.skipIf(!enabled)("Talonarios colaborativos (PostgreSQL real)", () => {
   });
 
   it("cierre de ventas: servicio y trigger bloquean pedidos; extender exige permiso y deja auditoría", async () => {
+    const { campaignScheduleForDate, utcToZonedDateInput } = await import("@/modules/raffles/campaign");
+    const nextSchedule = () => {
+      const date = utcToZonedDateInput(new Date(Date.now() + 5 * day), "America/Santiago");
+      const schedule = campaignScheduleForDate(date, "America/Santiago")!;
+      return { ...schedule, reason: "x" };
+    };
     await mig`UPDATE orders SET expires_at = now() - interval '1 minute' WHERE raffle_id = ${raffleId} AND status = 'pending'`;
     await svc.expireStale(db, raffleId);
     await mig`ALTER TABLE raffles DISABLE TRIGGER raffles_guard_dates`.catch(() => {});
@@ -327,11 +333,10 @@ describe.skipIf(!enabled)("Talonarios colaborativos (PostgreSQL real)", () => {
       mig`INSERT INTO orders (organization_id, raffle_id, status, is_demo, total_cents, currency, expires_at) VALUES (${orgId}, ${raffleId}, 'pending', true, 0, 'CLP', now() + interval '5 minutes')`,
     ).rejects.toThrow();
     await expect(
-      camp.extendSalesClose(db, otherUserId, raffleId, { salesClosesAt: new Date(Date.now() + 5 * day), drawAt: new Date(Date.now() + 9 * day), reason: "x" }),
+      camp.extendSalesClose(db, otherUserId, raffleId, nextSchedule()),
     ).rejects.toBeTruthy();
     await camp.extendSalesClose(db, userId, raffleId, {
-      salesClosesAt: new Date(Date.now() + 5 * day),
-      drawAt: new Date(Date.now() + 9 * day),
+      ...nextSchedule(),
       reason: "Más tiempo para vender",
     });
     const [a] = await mig`SELECT metadata FROM audit_events WHERE entity_id = ${raffleId} AND action = 'raffle.sales_extended'`;

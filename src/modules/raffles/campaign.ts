@@ -2,19 +2,10 @@
 
 export const DEFAULT_TIME_ZONE = "America/Santiago";
 
-function isValidZone(tz: string): boolean {
-  try {
-    new Intl.DateTimeFormat("es-CL", { timeZone: tz });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Zona horaria del proyecto (configurable con APP_TIMEZONE); una zona inválida cae al valor por defecto. */
-export function getAppTimeZone(env: Record<string, string | undefined> = process.env): string {
-  const tz = env.APP_TIMEZONE?.trim();
-  return tz && isValidZone(tz) ? tz : DEFAULT_TIME_ZONE;
+/** La programación comercial de rifas se interpreta siempre en horario de Santiago. */
+export function getAppTimeZone(_env: Record<string, string | undefined> = process.env): string {
+  void _env;
+  return DEFAULT_TIME_ZONE;
 }
 
 function partsIn(ms: number, tz: string) {
@@ -51,6 +42,19 @@ export function zonedLocalToUtc(local: string, tz: string): Date | null {
   guess = naive - offsetMs(guess, tz);
   const out = new Date(guess);
   return Number.isNaN(out.getTime()) ? null : out;
+}
+
+/** Genera el calendario comercial fijo para una fecha local de Santiago. */
+export function campaignScheduleForDate(date: string, tz = DEFAULT_TIME_ZONE): { salesClosesAt: Date; drawAt: Date } | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const salesClosesAt = zonedLocalToUtc(`${date}T22:00`, tz);
+  const drawAt = zonedLocalToUtc(`${date}T22:30`, tz);
+  return salesClosesAt && drawAt ? { salesClosesAt, drawAt } : null;
+}
+
+/** Fecha de calendario local para un instante UTC. */
+export function utcToZonedDateInput(date: Date | null, tz: string): string {
+  return utcToZonedInput(date, tz).slice(0, 10);
 }
 
 /** Instante UTC → valor para `<input type="datetime-local">` en la zona del proyecto. */

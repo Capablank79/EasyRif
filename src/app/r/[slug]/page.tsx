@@ -4,10 +4,10 @@ import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Container } from "@/components/ui/container";
-import { formatMoney, formatZoned, getAppTimeZone, isSalesClosed } from "@/modules/raffles";
+import { formatMoney, formatZoned, getAppTimeZone, isSalesClosed, utcToZonedDateInput } from "@/modules/raffles";
 import { getPublicRaffleWithId } from "@/modules/raffles/service";
 import { NumberPicker } from "@/modules/reservations/number-picker";
-import { getPublicCounts, getReservationConfig } from "@/modules/reservations/service";
+import { expireCampaignReservations, getPublicCounts, getReservationConfig } from "@/modules/reservations/service";
 import { getDb } from "@/platform/db/client";
 
 export const dynamic = "force-dynamic";
@@ -51,6 +51,7 @@ export default async function RifaPublicaPage({ params }: Props) {
   const db = getDb();
   const r = await getPublicRaffleWithId(db, slug);
   if (!r) notFound();
+  await expireCampaignReservations(db, r.id);
   const counts = await getPublicCounts(db, r.id);
   const cfg = getReservationConfig();
   const tz = getAppTimeZone();
@@ -82,7 +83,7 @@ export default async function RifaPublicaPage({ params }: Props) {
             )}
             {r.endsAt && !r.salesClosesAt && (
               <p className="mt-3 text-sm text-sky-100">
-                Fecha estimada del sorteo: {r.endsAt.toISOString().slice(0, 10)} (informativa).
+                Fecha estimada del sorteo: {utcToZonedDateInput(r.endsAt, tz)} (informativa).
               </p>
             )}
             <a

@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { getActiveRole, assertCan, type OrgAction } from "@/modules/organizations";
-import { computeCampaignState, type CampaignState } from "@/modules/raffles/campaign";
+import { campaignScheduleForDate, computeCampaignState, getAppTimeZone, utcToZonedInput, type CampaignState } from "@/modules/raffles/campaign";
 import { hashValue, TOKEN_RE } from "@/modules/reservations/service";
 import { recordAuditEvent } from "@/platform/audit";
 import { raffles, sellers } from "@/platform/db/schema";
@@ -441,8 +441,12 @@ export async function extendSalesClose(
   const reason = input.reason.replace(/\s+/g, " ").trim();
   if (reason.length < 5 || reason.length > 300) throw new CampaignError("invalid", "Indique el motivo (5 a 300 caracteres).");
   if (input.salesClosesAt.getTime() <= Date.now()) throw new CampaignError("invalid", "El nuevo cierre debe estar en el futuro.");
-  if (input.drawAt.getTime() <= input.salesClosesAt.getTime())
-    throw new CampaignError("invalid", "El sorteo debe ser posterior al nuevo cierre de ventas.");
+  const tz = getAppTimeZone();
+  const localClose = utcToZonedInput(input.salesClosesAt, tz);
+  const localDraw = utcToZonedInput(input.drawAt, tz);
+  const expected = campaignScheduleForDate(localClose.slice(0, 10), tz);
+  if (!expected || localClose.slice(11) !== "22:00" || localDraw !== `${localClose.slice(0, 10)}T22:30`)
+    throw new CampaignError("invalid", "El cierre debe ser a las 22:00 y el sorteo a las 22:30, hora de Santiago.");
   await db.transaction(async (rawTx) => {
     const tx = asDb(rawTx);
     const r = await lockRaffle(tx, raffle.id, raffle.organizationId);

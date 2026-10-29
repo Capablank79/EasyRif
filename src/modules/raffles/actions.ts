@@ -73,7 +73,9 @@ export async function updateRaffleAction(_: RaffleFormState, fd: FormData): Prom
   const user = await requireUser();
   const raffleId = id(fd, "raffleId");
   if (!raffleId) return { error: "Rifa no válida." };
-  const parsed = validateRaffleForm(raffleRaw(fd));
+  // Las campañas históricas pueden tener cierres pasados: el servicio preserva sus fechas
+  // si el usuario no cambia el día. La fecha nueva, cuando cambia, se valida en el servicio.
+  const parsed = validateRaffleForm(raffleRaw(fd), undefined, undefined, undefined, { requireFutureClose: false });
   if (!parsed.ok) return { fieldErrors: parsed.errors };
   try {
     await svc.updateRaffle(getDb(), user.id, raffleId, parsed.values);

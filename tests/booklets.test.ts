@@ -11,7 +11,7 @@ import {
 import { validateRaffleForm } from "@/modules/raffles/validation";
 
 const limits = { maxBooklets: 500, maxPerBooklet: 200 };
-const raw = { title: "Rifa", description: "", price: "1000", currency: "CLP", numberCount: "", drawDate: "" };
+const raw = { title: "Rifa", description: "", price: "1000", currency: "CLP", numberCount: "", drawDate: "2030-05-20" };
 
 describe("talonarios foliados: utilidades puras", () => {
   it("valida la configuracion y calcula el total", () => {
@@ -40,7 +40,6 @@ describe("talonarios foliados: utilidades puras", () => {
     const r = validateRaffleForm(
       {
         ...raw, numberCount: "5", numbering: "booklets", bookletCount: "10", numbersPerBooklet: "20", firstFolio: "",
-        salesClosesAt: "2030-05-01T18:00", drawAt: "2030-05-10T20:00",
       },
       10000,
       limits,

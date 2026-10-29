@@ -18,8 +18,7 @@ describe("BUILD-010: guia del asistente de creacion", () => {
     expect(stepForField("price")).toBe(1);
     expect(stepForField("numbering")).toBe(2);
     expect(stepForField("bookletCount")).toBe(2);
-    expect(stepForField("salesClosesAt")).toBe(3);
-    expect(stepForField("drawAt")).toBe(3);
+    expect(stepForField("drawDate")).toBe(3);
     expect(stepForField("desconocido")).toBe(1);
   });
 
@@ -38,8 +37,7 @@ describe("BUILD-010: guia del asistente de creacion", () => {
     numberCount: "100",
     bookletCount: "10",
     numbersPerBooklet: "20",
-    salesClosesAt: "",
-    drawAt: "",
+    drawDate: "2030-01-01",
   };
 
   it("avisa de campos obligatorios vacios por paso sin bloquear datos validos", () => {
@@ -47,18 +45,17 @@ describe("BUILD-010: guia del asistente de creacion", () => {
     expect(Object.keys(missingRequiredInStep(1, { ...base, title: "  ", price: "" })).sort()).toEqual(["price", "title"]);
     expect(missingRequiredInStep(2, base)).toEqual({});
     expect(Object.keys(missingRequiredInStep(2, { ...base, numberCount: "" }))).toEqual(["numberCount"]);
-    // En individual no se exigen fechas de cierre/sorteo.
     expect(missingRequiredInStep(3, base)).toEqual({});
   });
 
-  it("en talonarios exige talonarios, numeros por talonario y fechas", () => {
+  it("exige la fecha del sorteo en todos los modos", () => {
     const b = { ...base, numbering: "booklets" as const };
     expect(Object.keys(missingRequiredInStep(2, { ...b, bookletCount: "", numbersPerBooklet: "" })).sort()).toEqual([
       "bookletCount",
       "numbersPerBooklet",
     ]);
-    expect(Object.keys(missingRequiredInStep(3, b)).sort()).toEqual(["drawAt", "salesClosesAt"]);
-    expect(missingRequiredInStep(3, { ...b, salesClosesAt: "2030-01-01T10:00", drawAt: "2030-01-02T10:00" })).toEqual({});
+    expect(missingRequiredInStep(3, { ...b, drawDate: "" })).toEqual({ drawDate: "Elige la fecha del sorteo." });
+    expect(missingRequiredInStep(3, b)).toEqual({});
   });
 
   it("sugiere la siguiente accion en el mismo orden que los requisitos de publicacion", () => {
@@ -78,10 +75,14 @@ describe("BUILD-010: regresiones de interfaz (verificacion estatica del codigo f
     expect(form).toContain("hidden={!show(3)}");
   });
 
-  it("el formulario sigue enviando los mismos campos al servidor", () => {
-    for (const name of ["title", "description", "price", "currency", "numberCount", "drawDate", "bookletCount", "numbersPerBooklet", "firstFolio", "salesClosesAt", "drawAt"]) {
+  it("el formulario solicita una sola fecha y fija automáticamente los horarios", () => {
+    for (const name of ["title", "description", "price", "currency", "numberCount", "drawDate", "bookletCount", "numbersPerBooklet", "firstFolio"]) {
       expect(form).toContain(`name="${name}"`);
     }
+    expect(form).toContain("22:00");
+    expect(form).toContain("22:30");
+    expect(form).not.toContain('name="salesClosesAt"');
+    expect(form).not.toContain('name="drawAt"');
     expect(form).toContain('name={lockNumberCount ? undefined : "numbering"}');
   });
 
