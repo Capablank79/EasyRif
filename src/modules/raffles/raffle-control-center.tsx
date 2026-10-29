@@ -29,11 +29,13 @@ function requiresAttention(raffle: RaffleListItem, nowMs: number) {
 export function RaffleControlCenter({
   list,
   canManage,
+  canViewSales,
   appUrl,
   nowMs,
 }: {
   list: RaffleListItem[];
   canManage: boolean;
+  canViewSales: boolean;
   appUrl: string;
   nowMs: number;
 }) {
@@ -162,7 +164,7 @@ export function RaffleControlCenter({
                     <ButtonLink href={`/panel/rifas/${r.id}`} variant="ghost" className="w-full px-2">Ver detalle</ButtonLink>
                     {canShare ? <CopyLink url={publicUrl} label="Compartir enlace" compact /> : <button type="button" disabled title="Publica la rifa para compartir su enlace" className="min-h-11 rounded-xl border border-line px-2 text-sm font-semibold text-muted">Compartir enlace</button>}
                     {canManage && (r.numberingMode === "booklets" ? <ButtonLink href={`/panel/rifas/${r.id}/responsables`} variant="ghost" className="w-full px-2">Administrar responsables</ButtonLink> : <button type="button" disabled title="Disponible en rifas con talonarios foliados" className="min-h-11 rounded-xl border border-line px-2 text-sm font-semibold text-muted">Administrar responsables</button>)}
-                    <ButtonLink href={`/panel/rifas/${r.id}${r.numberingMode === "booklets" ? "/responsables" : "#numeracion"}`} variant="ghost" className="w-full px-2">Consultar ventas</ButtonLink>
+                    {canViewSales ? <ButtonLink href={`/panel/rifas/${r.id}/ventas`} variant="ghost" className="w-full px-2">Consultar ventas</ButtonLink> : <button type="button" disabled title="Tu rol no permite consultar operaciones" className="min-h-11 rounded-xl border border-line px-2 text-sm font-semibold text-muted">Consultar ventas</button>}
                   </nav>
                 </Card>
               </li>

@@ -4,6 +4,7 @@ import path from "node:path";
 import { parseEnv } from "node:util";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { campaignScheduleForDate, getAppTimeZone, utcToZonedDateInput } from "@/modules/raffles/campaign";
 
 /*
  * Módulo de rifas contra PostgreSQL real (easyrif_dev) con el rol de aplicación.
@@ -100,6 +101,34 @@ describe.skipIf(!enabled)("Rifas (PostgreSQL real)", () => {
     await expect(svc.updateRaffle(db, ids.viewerA, r.id, input())).rejects.toThrow();
     await svc.updateRaffle(db, ids.editorA, r.id, input({ title: "Editada" }));
     expect((await svc.getRaffleDetail(db, ids.viewerA, r.id)).raffle.title).toBe("Editada");
+  });
+
+  it("rifa individual: permite guardar fechas compartidas y conservarlas al editar otros campos", async () => {
+    const timezone = getAppTimeZone();
+    const localDate = (days: number) => utcToZonedDateInput(new Date(Date.now() + days * 86_400_000), timezone);
+    const firstSchedule = campaignScheduleForDate(localDate(30), timezone)!;
+    const raffle = await svc.createRaffle(db, ids.editorA, orgA, input({
+      title: `Individual con fechas ${tag}`, drawDate: firstSchedule.drawAt,
+      salesClosesAt: firstSchedule.salesClosesAt, drawAt: firstSchedule.drawAt,
+    }));
+
+    await svc.updateRaffle(db, ids.editorA, raffle.id, input({
+      title: "Individual editada", drawDate: firstSchedule.drawAt,
+      salesClosesAt: firstSchedule.salesClosesAt, drawAt: firstSchedule.drawAt,
+    }));
+    let saved = await svc.getRaffleDetail(db, ids.editorA, raffle.id);
+    expect(saved.raffle).toMatchObject({
+      title: "Individual editada", numberingMode: "individual",
+      salesClosesAt: firstSchedule.salesClosesAt, drawAt: firstSchedule.drawAt,
+    });
+
+    const secondSchedule = campaignScheduleForDate(localDate(35), timezone)!;
+    await svc.updateRaffle(db, ids.editorA, raffle.id, input({
+      title: "Fecha individual actualizada", drawDate: secondSchedule.drawAt,
+      salesClosesAt: secondSchedule.salesClosesAt, drawAt: secondSchedule.drawAt,
+    }));
+    saved = await svc.getRaffleDetail(db, ids.editorA, raffle.id);
+    expect(saved.raffle).toMatchObject({ salesClosesAt: secondSchedule.salesClosesAt, drawAt: secondSchedule.drawAt });
   });
 
   it("IDOR: otra organización no ve, edita ni opera la rifa", async () => {

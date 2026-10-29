@@ -9,6 +9,7 @@ import { ImageError, MAX_IMAGE_BYTES } from "@/modules/storage/image";
 import { removeImage, setImage } from "./images";
 import * as svc from "./service";
 import { RaffleError } from "./service";
+import { databaseErrorMessage, pgErrorInfo } from "./db-errors";
 import {
   UUID_RE,
   validatePrizeForm,
@@ -36,6 +37,11 @@ const id = (fd: FormData, k: string) => {
 function toState(e: unknown): RaffleFormState {
   if (e instanceof RaffleError) return { error: e.message };
   if (e instanceof AuthorizationError) return { error: "Tu rol no permite realizar esta acción." };
+  const dbMsg = databaseErrorMessage(e);
+  if (dbMsg) {
+    console.error("[raffles] error de base de datos", pgErrorInfo(e));
+    return { error: dbMsg };
+  }
   throw e;
 }
 

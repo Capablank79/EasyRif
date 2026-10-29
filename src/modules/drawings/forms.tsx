@@ -11,12 +11,15 @@ export function SimulationForm({
   raffleId,
   idempotencyKey,
   canUseConfig,
+  individual = false,
   defaults,
 }: {
   raffleId: string;
   /** Generada en el servidor para cada render: un doble envío no duplica la simulación. */
   idempotencyKey: string;
   canUseConfig: boolean;
+  /** Numeración individual: un solo grupo de números, sin folios ni talonarios. */
+  individual?: boolean;
   defaults: { bookletCount: number; numbersPerBooklet: number; prizeCount: number };
 }) {
   const [state, action, pending] = useActionState<SimulationFormState, FormData>(runSimulationAction, {});
@@ -50,8 +53,8 @@ export function SimulationForm({
           <span>
             <span className="block font-medium text-navy-900">Configuración de esta rifa</span>
             <span className="block text-muted">
-              Usa sus talonarios y premios actuales como instantánea. No lee ni modifica ventas, reservas ni compradores.
-              {!canUseConfig && " (Solo para rifas por talonarios con premios.)"}
+              {individual ? "Usa sus números y premios actuales como instantánea." : "Usa sus talonarios y premios actuales como instantánea."} No lee ni modifica ventas, reservas ni compradores.
+              {!canUseConfig && " (Requiere premios y números generados.)"}
             </span>
           </span>
         </label>
@@ -65,18 +68,18 @@ export function SimulationForm({
           />
           <span>
             <span className="block font-medium text-navy-900">Datos sintéticos</span>
-            <span className="block text-muted">Talonarios y premios ficticios, aislados de esta rifa.</span>
+            <span className="block text-muted">{individual ? "Números y premios ficticios, aislados de esta rifa." : "Talonarios y premios ficticios, aislados de esta rifa."}</span>
           </span>
         </label>
       </fieldset>
       {source === "synthetic" && (
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div>
+        <div className={individual ? "grid gap-3 sm:grid-cols-2" : "grid gap-3 sm:grid-cols-3"}>
+          {individual ? <input type="hidden" name="bookletCount" value="1" /> : <div>
             <label htmlFor="bookletCount" className="text-sm font-medium text-navy-900">Talonarios</label>
             <input id="bookletCount" name="bookletCount" type="number" inputMode="numeric" min={1} max={1000} defaultValue={defaults.bookletCount} required className={inputCls} />
-          </div>
+          </div>}
           <div>
-            <label htmlFor="numbersPerBooklet" className="text-sm font-medium text-navy-900">Números por talonario</label>
+            <label htmlFor="numbersPerBooklet" className="text-sm font-medium text-navy-900">{individual ? "Cantidad de números" : "Números por talonario"}</label>
             <input id="numbersPerBooklet" name="numbersPerBooklet" type="number" inputMode="numeric" min={1} max={9999} defaultValue={defaults.numbersPerBooklet} required className={inputCls} />
           </div>
           <div>

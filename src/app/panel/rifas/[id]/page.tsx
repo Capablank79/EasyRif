@@ -64,9 +64,12 @@ export default async function RifaDetallePage({ params }: { params: Promise<{ id
       </section>
       <Container className="space-y-6 py-6">
         <PanelNav active="rifas" orgId={r.organizationId} />
-        <ButtonLink href={`/panel/rifas?org=${r.organizationId}`} variant="ghost" className="w-full sm:w-auto">
-          ← Volver a mis rifas
-        </ButtonLink>
+        <div className="flex flex-wrap gap-2">
+          <ButtonLink href={`/panel/rifas?org=${r.organizationId}`} variant="ghost" className="w-full sm:w-auto">
+            ← Volver a mis rifas
+          </ButtonLink>
+          {can(role, "orders:read") && <ButtonLink href={`/panel/rifas/${r.id}/ventas`} className="w-full sm:w-auto">Ventas</ButtonLink>}
+        </div>
 
         {!canEdit && (
           <p role="note" className="rounded-xl bg-sky-100 p-3 text-sm text-navy-900">

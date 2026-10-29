@@ -50,7 +50,11 @@ export class SimulationInputError extends Error {
 
 const isPosInt = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 1;
 
-export function validateSimulationInput(booklets: SimBooklet[], prizes: SimPrize[]): number {
+/**
+ * `maxPerGroup`: tope por grupo. Un talonario admite hasta MAX_PER_BOOKLET; una rifa individual se modela
+ * como un único grupo (folio 1) y su tope es el total elegible.
+ */
+export function validateSimulationInput(booklets: SimBooklet[], prizes: SimPrize[], maxPerGroup = MAX_PER_BOOKLET): number {
   if (booklets.length === 0) throw new SimulationInputError("No hay talonarios para simular.");
   if (booklets.length > MAX_BOOKLETS) throw new SimulationInputError("Demasiados talonarios para simular.");
   if (prizes.length === 0) throw new SimulationInputError("La simulación requiere al menos un premio.");
@@ -58,7 +62,7 @@ export function validateSimulationInput(booklets: SimBooklet[], prizes: SimPrize
   const folios = new Set<number>();
   let total = 0;
   for (const b of booklets) {
-    if (!isPosInt(b.folio) || !isPosInt(b.count) || b.count > MAX_PER_BOOKLET) {
+    if (!isPosInt(b.folio) || !isPosInt(b.count) || b.count > maxPerGroup) {
       throw new SimulationInputError("Talonarios inconsistentes.");
     }
     if (folios.has(b.folio)) throw new SimulationInputError("Folios duplicados.");
@@ -88,8 +92,9 @@ export function runSimulation(
   booklets: SimBooklet[],
   prizes: SimPrize[],
   rng: RandomInt = secureRandomInt,
+  maxPerGroup = MAX_PER_BOOKLET,
 ): { draws: SimDraw[]; totalEligible: number } {
-  const totalEligible = validateSimulationInput(booklets, prizes);
+  const totalEligible = validateSimulationInput(booklets, prizes, maxPerGroup);
   const ordered = [...booklets].sort((a, b) => a.folio - b.folio);
   const won = new Map<number, Set<number>>(ordered.map((b) => [b.folio, new Set<number>()]));
   const remaining = new Map<number, number>(ordered.map((b) => [b.folio, b.count]));

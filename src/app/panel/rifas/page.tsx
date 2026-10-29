@@ -19,6 +19,7 @@ export default async function RifasPage({ searchParams }: { searchParams: Promis
   const list = await listRaffles(getDb(), user.id, active.id);
   const canCreate = can(active.role, "raffle:edit_draft");
   const canManage = can(active.role, "sellers:manage");
+  const canViewSales = can(active.role, "orders:read");
   const q = `?org=${active.id}`;
   const nowMs = new Date().getTime();
 
@@ -65,7 +66,7 @@ export default async function RifasPage({ searchParams }: { searchParams: Promis
               <p className="mt-1 text-sm text-muted">Tu rol es de solo lectura.</p>
             )}
           </Card>
-        ) : <RaffleControlCenter list={list} canManage={canManage} appUrl={process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"} nowMs={nowMs} />}
+        ) : <RaffleControlCenter list={list} canManage={canManage} canViewSales={canViewSales} appUrl={process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"} nowMs={nowMs} />}
       </Container>
     </>
   );

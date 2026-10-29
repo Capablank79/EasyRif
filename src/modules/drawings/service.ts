@@ -2,10 +2,11 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { assertCan, getActiveRole, type OrgRole } from "@/modules/organizations";
 import { computeCampaignState, type CampaignState } from "@/modules/raffles/campaign";
 import { recordAuditEvent } from "@/platform/audit";
-import { booklets, prizes, raffles, simulationDraws, simulationRuns } from "@/platform/db/schema";
+import { booklets, prizes, raffleNumbers, raffles, simulationDraws, simulationRuns } from "@/platform/db/schema";
 import type { Database } from "@/platform/db/types";
 import {
   MAX_BOOKLETS,
+  MAX_ELIGIBLE,
   MAX_PER_BOOKLET,
   MAX_PRIZES,
   RULES_VERSION,
@@ -272,17 +273,25 @@ export async function runDrawSimulation(
     let bk: SimBooklet[];
     let pz: SimPrize[];
     if (opts.source === "raffle_config") {
-      if (raffle.numberingMode !== "booklets" || !raffle.numbersPerBooklet) {
-        throw new DrawError("invalid", "La simulación con la configuración real solo está disponible para rifas por talonarios.");
+      if (raffle.numberingMode === "booklets") {
+        if (!raffle.numbersPerBooklet) throw new DrawError("invalid", "La rifa aún no tiene talonarios generados.");
+        const rows = await t.select({ folio: booklets.folio }).from(booklets).where(eq(booklets.raffleId, raffle.id));
+        bk = rows.map((b) => ({ folio: b.folio, count: raffle.numbersPerBooklet! }));
+        if (bk.length === 0) throw new DrawError("invalid", "La rifa aún no tiene talonarios generados.");
+      } else {
+        // Numeración individual: un único grupo (folio 1) con todos sus números; el sorteo es de una sola etapa.
+        const [{ n: generated }] = await t
+          .select({ n: sql<number>`count(*)::int` })
+          .from(raffleNumbers)
+          .where(eq(raffleNumbers.raffleId, raffle.id));
+        if (generated === 0) throw new DrawError("invalid", "La rifa aún no tiene números generados.");
+        bk = [{ folio: 1, count: generated }];
       }
-      const rows = await t.select({ folio: booklets.folio }).from(booklets).where(eq(booklets.raffleId, raffle.id));
-      bk = rows.map((b) => ({ folio: b.folio, count: raffle.numbersPerBooklet! }));
       pz = await t
         .select({ position: prizes.position, title: prizes.title })
         .from(prizes)
         .where(eq(prizes.raffleId, raffle.id))
         .orderBy(asc(prizes.position));
-      if (bk.length === 0) throw new DrawError("invalid", "La rifa aún no tiene talonarios generados.");
       if (pz.length === 0) throw new DrawError("invalid", "La rifa no tiene premios.");
     } else {
       if (!opts.synthetic) throw new DrawError("invalid", "Faltan los parámetros de la simulación sintética.");
@@ -293,7 +302,7 @@ export async function runDrawSimulation(
 
     let result;
     try {
-      result = runSimulation(bk, pz, rng);
+      result = runSimulation(bk, pz, rng, raffle.numberingMode === "booklets" || opts.source === "synthetic" ? undefined : MAX_ELIGIBLE);
     } catch (e) {
       if (e instanceof SimulationInputError) throw new DrawError("invalid", e.message);
       throw e;

@@ -107,6 +107,24 @@ describe.skipIf(!enabled)("Simulación de sorteos (PostgreSQL real)", () => {
     expect(await snapshotCounts(raffleId)).toEqual(before);
   });
 
+  it("rifa individual: sorteo simulado de una etapa sobre sus números, sin tocar ventas", async () => {
+    const r = await rsvc.createRaffle(db, ids.owner, orgId, { ...base, title: `Individual ${tag}`, numberCount: 100 });
+    await expect(draws.runDrawSimulation(db, ids.owner, r.id, { ...cfg, idempotencyKey: key() })).rejects.toMatchObject({ code: "invalid" });
+    await rsvc.generateNumbers(db, ids.owner, r.id);
+    for (const t of ["Premio A", "Premio B", "Premio C"]) await rsvc.addPrize(db, ids.owner, r.id, { title: t, description: null });
+    const before = await snapshotCounts(r.id);
+    const { run } = await draws.runDrawSimulation(db, ids.owner, r.id, { ...cfg, idempotencyKey: key() });
+    expect(run.totalEligible).toBe(100);
+    expect(run.draws.map((d) => d.eligibleBefore)).toEqual([100, 99, 98]);
+    expect(run.draws.every((d) => d.folio === 1 && d.localNumber >= 1 && d.localNumber <= 100)).toBe(true);
+    expect(new Set(run.draws.map((d) => d.localNumber)).size).toBe(3);
+    expect(await snapshotCounts(r.id)).toEqual(before);
+    // Los números ganadores existen en la rifa con el formato individual (ancho 3).
+    const numbers = run.draws.map((d) => String(d.localNumber).padStart(3, "0"));
+    const found = await mig`SELECT count(*)::int n FROM raffle_numbers WHERE raffle_id = ${r.id} AND number IN ${mig(numbers)}`;
+    expect(found[0].n).toBe(3);
+  });
+
   it("simulación sintética en una rifa cualquiera", async () => {
     const { run } = await draws.runDrawSimulation(db, ids.admin, raffleId, { ...synth, idempotencyKey: key() });
     expect(run.source).toBe("synthetic");

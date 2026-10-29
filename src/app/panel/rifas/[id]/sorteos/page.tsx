@@ -28,8 +28,31 @@ function Banner() {
   );
 }
 
-function DrawSteps({ d, nw }: { d: SimulationDrawView; nw: number }) {
+function DrawSteps({ d, nw, individual }: { d: SimulationDrawView; nw: number; individual: boolean }) {
   const total = d.eligibleBefore;
+  if (individual) {
+    const number = String(d.localNumber).padStart(nw, "0");
+    return (
+      <li className="rounded-2xl border border-line bg-white p-4">
+        <p className="text-sm font-semibold text-navy-900">
+          Premio {d.prizePosition}: <span className="break-words">{d.prizeTitle}</span>
+        </p>
+        <ol className="mt-3 grid gap-2 sm:grid-cols-2">
+          <li className="rounded-xl bg-sky-100 p-3 text-sm">
+            <span className="block text-xs font-medium text-muted">1. Número sorteado</span>
+            <span className="block text-lg font-bold text-navy-900">{number}</span>
+            <span className="block text-xs text-muted">Uno de {total} números elegibles</span>
+          </li>
+          <li className="rounded-xl bg-lime-300 p-3 text-sm text-navy-950">
+            <span className="block text-xs font-medium">2. Resultado (simulado)</span>
+            <span className="block break-words text-lg font-bold">Número {number}</span>
+            <span className="block text-xs">Probabilidad: 1 de {total} ({pct(1, total)})</span>
+            <span className="mt-1 block text-xs font-medium">Ganador: {syntheticParticipant(d.localNumber)}</span>
+          </li>
+        </ol>
+      </li>
+    );
+  }
   const num = `N-${String(d.localNumber).padStart(nw, "0")}`;
   return (
     <li className="rounded-2xl border border-line bg-white p-4">
@@ -62,9 +85,10 @@ function DrawSteps({ d, nw }: { d: SimulationDrawView; nw: number }) {
   );
 }
 
-function RunView({ run, tz }: { run: SimulationRunView; tz: string }) {
+function RunView({ run, tz, individual }: { run: SimulationRunView; tz: string; individual: boolean }) {
   const perBooklet = Math.max(...run.draws.map((d) => Math.max(...Object.values(d.weightsBefore))));
-  const nw = Math.max(2, String(perBooklet).length);
+  // Individual: los números se guardan con el ancho del total (p. ej. 045 en 100 números).
+  const nw = individual ? String(run.totalEligible).length : Math.max(2, String(perBooklet).length);
   const reusedFolio = new Set(run.draws.map((d) => d.folio)).size < run.draws.length;
   return (
     <div className="space-y-3">
@@ -74,10 +98,10 @@ function RunView({ run, tz }: { run: SimulationRunView; tz: string }) {
       </p>
       <ul className="space-y-3">
         {run.draws.map((d) => (
-          <DrawSteps key={d.prizePosition} d={d} nw={nw} />
+          <DrawSteps key={d.prizePosition} d={d} nw={nw} individual={individual} />
         ))}
       </ul>
-      {reusedFolio && (
+      {!individual && reusedFolio && (
         <p className="text-sm text-navy-900">
           Un mismo talonario puede salir más de una vez: solo se excluye la participación ganadora, no el folio.
         </p>
@@ -110,7 +134,8 @@ export default async function SorteosPage({ params }: { params: Promise<{ id: st
   }
   const { raffle: r, gate } = o;
   const tz = getAppTimeZone();
-  const canUseConfig = r.numberingMode === "booklets" && o.prizes.length > 0 && (r.bookletCount ?? 0) > 0;
+  const individual = r.numberingMode !== "booklets";
+  const canUseConfig = o.prizes.length > 0 && (individual ? o.counts.total > 0 : (r.bookletCount ?? 0) > 0);
   const [latest, ...older] = o.runs;
 
   return (
@@ -164,9 +189,9 @@ export default async function SorteosPage({ params }: { params: Promise<{ id: st
             </ol>
           )}
           <p className="mt-3 text-sm text-muted">
-            Cada premio tiene su propia extracción: primero el folio (con peso igual a sus participaciones elegibles) y luego el
-            número dentro del folio. Solo la participación ganadora se excluye: el talonario sigue participando y una misma persona
-            puede ganar otro premio con un número distinto.
+            {individual
+              ? "Cada premio tiene su propia extracción entre todos los números de la rifa, todos con la misma probabilidad. Solo el número ganador se excluye de los premios siguientes."
+              : "Cada premio tiene su propia extracción: primero el folio (con peso igual a sus participaciones elegibles) y luego el número dentro del folio. Solo la participación ganadora se excluye: el talonario sigue participando y una misma persona puede ganar otro premio con un número distinto."}
           </p>
         </Card>
 
@@ -180,6 +205,7 @@ export default async function SorteosPage({ params }: { params: Promise<{ id: st
               raffleId={r.id}
               idempotencyKey={randomUUID()}
               canUseConfig={canUseConfig}
+              individual={individual}
               defaults={{ bookletCount: 10, numbersPerBooklet: 20, prizeCount: 3 }}
             />
           </Card>
@@ -192,7 +218,7 @@ export default async function SorteosPage({ params }: { params: Promise<{ id: st
           {latest ? (
             <div className="mt-3 space-y-3">
               <Banner />
-              <RunView run={latest} tz={tz} />
+              <RunView run={latest} tz={tz} individual={individual} />
             </div>
           ) : (
             <p className="mt-2 text-sm text-muted">Aún no hay simulaciones.</p>
@@ -209,7 +235,7 @@ export default async function SorteosPage({ params }: { params: Promise<{ id: st
                     {formatZoned(run.createdAt, tz)} · {run.draws.length} premios · simulación
                   </summary>
                   <div className="pb-3">
-                    <RunView run={run} tz={tz} />
+                    <RunView run={run} tz={tz} individual={individual} />
                   </div>
                 </details>
               ))}
