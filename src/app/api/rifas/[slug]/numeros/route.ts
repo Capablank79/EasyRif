@@ -7,7 +7,7 @@ import { getDb } from "@/platform/db/client";
 
 export const dynamic = "force-dynamic";
 
-const FILTERS: NumberFilter[] = ["all", "available", "reserved", "sold"];
+const FILTERS: NumberFilter[] = ["all", "available", "reserved", "simulated_sold", "sold"];
 
 export async function GET(req: Request, ctx: { params: Promise<{ slug: string }> }) {
   const ip = (req.headers.get("x-forwarded-for") ?? "local").split(",")[0].trim().slice(0, 64);

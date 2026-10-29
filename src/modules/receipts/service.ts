@@ -27,6 +27,8 @@ export interface ReceiptData {
   issuedAt: Date;
   expiresAt: Date;
   verificationCode: string;
+  simulationConfirmedAt?: Date | null;
+  simulationPaidAt?: Date | null;
 }
 
 export class ReceiptError extends Error {
@@ -47,6 +49,8 @@ interface OrderRow {
   title: string;
   price_cents: number;
   org_name: string;
+  simulation_confirmed_at: Date | string | null;
+  simulation_paid_at: Date | string | null;
 }
 
 /**
@@ -73,7 +77,13 @@ export async function getReceiptData(db: Database, token: string): Promise<Recei
     const [o] = rowsOf<OrderRow>(
       await tx.execute(sql`
         SELECT o."id", o."raffle_id", o."status", o."total_cents", o."currency", o."expires_at",
-               o."verification_hash", o."receipt_issued_at", r."title", r."price_cents", g."name" AS org_name
+               o."verification_hash", o."receipt_issued_at", r."title", r."price_cents", g."name" AS org_name,
+               (SELECT ae."created_at" FROM "audit_events" ae WHERE ae."organization_id" = o."organization_id"
+                 AND ae."entity_type" = 'demo_purchase' AND ae."entity_id" = o."id" AND ae."action" = 'demo.purchase_confirmed'
+                 ORDER BY ae."created_at" LIMIT 1) AS simulation_confirmed_at,
+               (SELECT ae."created_at" FROM "audit_events" ae WHERE ae."organization_id" = o."organization_id"
+                 AND ae."entity_type" = 'demo_payment' AND ae."entity_id" = o."id" AND ae."action" = 'demo.payment_simulated'
+                 ORDER BY ae."created_at" LIMIT 1) AS simulation_paid_at
         FROM "orders" o
         JOIN "raffles" r ON r."id" = o."raffle_id"
         JOIN "organizations" g ON g."id" = o."organization_id"
@@ -85,9 +95,9 @@ export async function getReceiptData(db: Database, token: string): Promise<Recei
         WHERE i."order_id" = ${found.id} ORDER BY n."number"`),
     );
     if (nums.length > MAX_RECEIPT_NUMBERS) throw new ReceiptError("too_many_numbers", "Demasiados numeros");
-    const ppl = rowsOf<{ number: string; name: string; email: string; phone: string | null }>(
+    const ppl = rowsOf<{ number: string; local_number: number | null; name: string; email: string; phone: string | null }>(
       await tx.execute(sql`
-        SELECT n."number", p."name", p."email", p."phone"
+        SELECT n."number", n."local_number", p."name", p."email", p."phone"
         FROM "order_item_participants" p
         JOIN "order_items" i ON i."id" = p."order_item_id"
         JOIN "raffle_numbers" n ON n."id" = i."raffle_number_id"
@@ -100,7 +110,7 @@ export async function getReceiptData(db: Database, token: string): Promise<Recei
       organizerName: o.org_name,
       numbers: nums.map((n) => participationLabel(n.number, n.local_number !== null)),
       participants: ppl.map((p) => ({
-        label: participationLabel(p.number, true),
+        label: participationLabel(p.number, p.local_number !== null),
         name: p.name,
         email: p.email,
         phone: p.phone,
@@ -111,6 +121,8 @@ export async function getReceiptData(db: Database, token: string): Promise<Recei
       issuedAt: new Date(o.receipt_issued_at as Date | string),
       expiresAt: new Date(o.expires_at),
       verificationCode: code,
+      simulationConfirmedAt: o.simulation_confirmed_at ? new Date(o.simulation_confirmed_at) : null,
+      simulationPaidAt: o.simulation_paid_at ? new Date(o.simulation_paid_at) : null,
     };
   });
 }
@@ -121,6 +133,8 @@ export interface PublicVerification {
   raffleTitle: string;
   numbers: string[];
   expiresAt: Date;
+  simulationConfirmedAt?: Date | null;
+  simulationPaidAt?: Date | null;
 }
 
 /**
@@ -132,9 +146,16 @@ export async function getVerification(db: Database, code: string): Promise<Publi
   const hash = hashVerificationCode(code);
   const [o] = rowsOf<{
     id: string; status: DemoStatus; expires_at: Date | string; title: string; past: boolean;
+    simulation_confirmed_at: Date | string | null; simulation_paid_at: Date | string | null;
   }>(
     await db.execute(sql`
-      SELECT o."id", o."status", o."expires_at", r."title", (o."expires_at" <= now()) AS past
+      SELECT o."id", o."status", o."expires_at", r."title", (o."expires_at" <= now()) AS past,
+        (SELECT ae."created_at" FROM "audit_events" ae WHERE ae."organization_id" = o."organization_id"
+          AND ae."entity_type" = 'demo_purchase' AND ae."entity_id" = o."id" AND ae."action" = 'demo.purchase_confirmed'
+          ORDER BY ae."created_at" LIMIT 1) AS simulation_confirmed_at,
+        (SELECT ae."created_at" FROM "audit_events" ae WHERE ae."organization_id" = o."organization_id"
+          AND ae."entity_type" = 'demo_payment' AND ae."entity_id" = o."id" AND ae."action" = 'demo.payment_simulated'
+          ORDER BY ae."created_at" LIMIT 1) AS simulation_paid_at
       FROM "orders" o JOIN "raffles" r ON r."id" = o."raffle_id"
       WHERE o."verification_hash" = ${hash} AND o."is_demo"`),
   );
@@ -152,5 +173,7 @@ export async function getVerification(db: Database, code: string): Promise<Publi
     raffleTitle: o.title,
     numbers: nums.map((n) => participationLabel(n.number, n.local_number !== null)),
     expiresAt,
+    ...(o.simulation_confirmed_at ? { simulationConfirmedAt: new Date(o.simulation_confirmed_at) } : {}),
+    ...(o.simulation_paid_at ? { simulationPaidAt: new Date(o.simulation_paid_at) } : {}),
   };
 }

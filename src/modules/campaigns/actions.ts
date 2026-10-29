@@ -7,6 +7,7 @@ import { getAppTimeZone, parseFolioList, validateCampaignDates } from "@/modules
 import { UUID_RE } from "@/modules/raffles/validation";
 import { getDb } from "@/platform/db/client";
 import { CampaignError, assignBooklets, createSeller, extendSalesClose, revokeSeller, unassignBooklets } from "./service";
+import { importSellerRows, parseSellerWorkbook, previewSellerImport } from "./seller-import";
 
 export interface CampaignFormState {
   error?: string;
@@ -32,6 +33,7 @@ async function run(fd: FormData, fn: (userId: string, raffleId: string) => Promi
   try {
     const ok = await fn(user.id, raffleId);
     revalidatePath(`/panel/rifas/${raffleId}/responsables`);
+    revalidatePath(`/panel/rifas/${raffleId}`);
     return { ok };
   } catch (e) {
     return toState(e);
@@ -43,6 +45,45 @@ export async function createSellerAction(_: CampaignFormState, fd: FormData) {
     await createSeller(getDb(), u, r, str(fd, "displayName"));
     return "Responsable creado.";
   });
+}
+
+function importFormValues(fd: FormData) {
+  const raffleId = uuid(fd, "raffleId");
+  const file = fd.get("file");
+  if (!raffleId) throw new CampaignError("invalid", "Rifa no válida.");
+  if (!(file instanceof File)) throw new CampaignError("invalid", "Selecciona un archivo .xlsx.");
+  return { raffleId, file };
+}
+
+function importError(e: unknown) {
+  if (e instanceof CampaignError) return e.message;
+  if (e instanceof AuthorizationError) return "Tu rol no permite importar responsables.";
+  throw e;
+}
+
+export async function previewSellerImportAction(fd: FormData) {
+  const user = await requireUser();
+  try {
+    const { raffleId, file } = importFormValues(fd);
+    const rows = await parseSellerWorkbook(file.name, Buffer.from(await file.arrayBuffer()));
+    return { preview: await previewSellerImport(getDb(), user.id, raffleId, rows) };
+  } catch (e) {
+    return { error: importError(e) };
+  }
+}
+
+export async function importSellerWorkbookAction(fd: FormData) {
+  const user = await requireUser();
+  try {
+    const { raffleId, file } = importFormValues(fd);
+    const rows = await parseSellerWorkbook(file.name, Buffer.from(await file.arrayBuffer()));
+    const result = await importSellerRows(getDb(), user.id, raffleId, rows);
+    revalidatePath(`/panel/rifas/${raffleId}/responsables`);
+    revalidatePath(`/panel/rifas/${raffleId}`);
+    return { result };
+  } catch (e) {
+    return { error: importError(e) };
+  }
 }
 
 export async function assignBookletsAction(_: CampaignFormState, fd: FormData) {

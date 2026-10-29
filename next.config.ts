@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["@node-rs/argon2", "pdfkit"],
+  serverExternalPackages: ["@node-rs/argon2", "pdfkit", "exceljs"],
   experimental: {
     // Imagen máxima de 3 MB + sobrecarga multipart; el valor por defecto (1 MB) rompía las subidas.
     serverActions: { bodySizeLimit: "4mb" },

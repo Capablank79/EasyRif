@@ -15,7 +15,7 @@ import { getDb } from "@/platform/db/client";
 export const metadata: Metadata = { title: "Talonarios" };
 export const dynamic = "force-dynamic";
 
-const STATUS: Record<string, string> = { available: "Libre", reserved: "Reservado (demo)", sold: "Vendido" };
+const STATUS: Record<string, string> = { available: "Libre", reserved: "Reservado (demo)", simulated_sold: "Vendido (simulado)", sold: "Vendido real" };
 
 export default async function TalonariosPage({
   params,
@@ -62,7 +62,7 @@ export default async function TalonariosPage({
         <Card>
           <h2 className="text-lg font-semibold text-navy-900">Folios</h2>
           <p className="mt-1 text-sm text-muted">
-            Serie interna de cada talonario: {seriesLabel(r.numbersPerBooklet!)}. Cada participación se identifica por folio y número.
+            Serie interna de cada talonario: {seriesLabel(r.numbersPerBooklet!)}. Cada participación se identifica por folio y número; por ejemplo, T-0003 / N-15 es el número 15 del talonario 3. Elige un folio para ver sus números.
           </p>
           <ul className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
             {summaries.map((s) => (
@@ -89,7 +89,7 @@ export default async function TalonariosPage({
           <Card>
             <h2 className="text-lg font-semibold text-navy-900">Talonario T-{formatFolio(sel.folio, w.folio)}</h2>
             <p className="mt-1 text-sm text-muted">
-              {sel.available} libres · {sel.reserved} reservados (demo) · {sel.sold} vendidos reales
+              {sel.available} libres · {sel.reserved} reservados (demo) · {sel.simulatedSold} vendidos (simulado) · {sel.sold} vendidos reales
             </p>
             <ul className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 md:grid-cols-6">
               {numbers.map((n) => (
@@ -101,6 +101,8 @@ export default async function TalonariosPage({
                       ? "border-line bg-white text-navy-900"
                       : n.status === "reserved"
                         ? "border-amber-300 bg-amber-50 text-amber-900"
+                        : n.status === "simulated_sold"
+                          ? "border-violet-300 bg-violet-50 text-violet-900"
                         : "border-line bg-gray-100 text-gray-500")
                   }
                 >

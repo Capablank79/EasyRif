@@ -1,13 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Container } from "@/components/ui/container";
 import { PanelNav } from "@/components/layout/panel-nav";
 import { requireOrganizationContext } from "@/modules/auth/session";
 import { can } from "@/modules/organizations/permissions";
-import { STATUS_LABEL } from "@/modules/raffles";
+import { RaffleControlCenter } from "@/modules/raffles/raffle-control-center";
 import { listRaffles } from "@/modules/raffles/service";
 import { getDb } from "@/platform/db/client";
 
@@ -19,7 +18,9 @@ export default async function RifasPage({ searchParams }: { searchParams: Promis
   const { user, organizations, active } = await requireOrganizationContext(typeof org === "string" ? org : undefined);
   const list = await listRaffles(getDb(), user.id, active.id);
   const canCreate = can(active.role, "raffle:edit_draft");
+  const canManage = can(active.role, "sellers:manage");
   const q = `?org=${active.id}`;
+  const nowMs = new Date().getTime();
 
   return (
     <>
@@ -55,7 +56,7 @@ export default async function RifasPage({ searchParams }: { searchParams: Promis
             <h2 className="text-lg font-semibold text-navy-900">Aún no tienes rifas</h2>
             {canCreate ? (
               <>
-                <p className="mt-1 text-sm text-muted">Crea un borrador, agrega premios y genera los números.</p>
+                <p className="mt-1 text-sm text-muted">Te guiamos paso a paso: creas un borrador, agregas premios con fotos, generas los números y la publicas.</p>
                 <ButtonLink href={`/panel/rifas/nueva${q}`} className="mt-4 w-full sm:w-auto">
                   Crear mi primera rifa
                 </ButtonLink>
@@ -64,44 +65,7 @@ export default async function RifasPage({ searchParams }: { searchParams: Promis
               <p className="mt-1 text-sm text-muted">Tu rol es de solo lectura.</p>
             )}
           </Card>
-        ) : (
-          <ul className="grid gap-4 sm:grid-cols-2">
-            {list.map((r) => (
-              <li key={r.id}>
-                <Card className="h-full">
-                  <div className="flex items-start justify-between gap-2">
-                    <h2 className="min-w-0 break-words text-lg font-semibold text-navy-900">{r.title}</h2>
-                    <Badge tone={r.status === "published" ? "demo" : "neutral"}>{STATUS_LABEL[r.status]}</Badge>
-                  </div>
-                  <dl className="mt-3 grid grid-cols-3 gap-2 text-sm">
-                    <div>
-                      <dt className="text-muted">Premios</dt>
-                      <dd className="font-semibold text-navy-900">{r.prizeCount}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-muted">{r.numberingMode === "booklets" ? "Participaciones" : "Números"}</dt>
-                      <dd className="font-semibold text-navy-900">
-                        {r.numberCount}
-                        {r.numberingMode === "booklets" && (
-                          <span className="block text-xs font-normal text-muted">
-                            {r.bookletCount} talonarios × {r.numbersPerBooklet}
-                          </span>
-                        )}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-muted">Generados</dt>
-                      <dd className="font-semibold text-navy-900">{r.numberTotal}</dd>
-                    </div>
-                  </dl>
-                  <ButtonLink href={`/panel/rifas/${r.id}`} variant="ghost" className="mt-4 w-full">
-                    {r.status === "draft" && can(active.role, "raffle:edit_draft") ? "Administrar" : "Ver detalle"}
-                  </ButtonLink>
-                </Card>
-              </li>
-            ))}
-          </ul>
-        )}
+        ) : <RaffleControlCenter list={list} canManage={canManage} appUrl={process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"} nowMs={nowMs} />}
       </Container>
     </>
   );

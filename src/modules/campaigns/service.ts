@@ -64,6 +64,7 @@ export interface SellerSummary {
   total: number;
   available: number;
   reservedDemo: number;
+  simulatedSold: number;
   sold: number;
   /** Solo presente para quien puede administrar responsables. */
   linkPath: string | null;
@@ -77,8 +78,25 @@ export interface AssignmentRecord {
 }
 
 export interface CampaignProgress {
-  counts: { total: number; available: number; reservedDemo: number; sold: number };
+  counts: {
+    total: number;
+    available: number;
+    reservedDemo: number;
+    simulatedSold: number;
+    sold: number;
+    realConfirmedOrders: number;
+    realRevenueCents: number;
+    activeDemoOrders: number;
+    activeDemoNumbers: number;
+    activeDemoAmountCents: number;
+    simulatedConfirmedOrders: number;
+    simulatedConfirmedNumbers: number;
+    simulatedConfirmedAmountCents: number;
+    simulatedPayments: number;
+    simulatedPaidAmountCents: number;
+  };
   booklets: { total: number; completed: number; unassigned: number };
+  folios: { folio: number; sellerId: string | null; sellerName: string | null }[];
   state: CampaignState;
   sellers: SellerSummary[];
   history: AssignmentRecord[];
@@ -90,7 +108,8 @@ const COUNT_COLS = sql`
   count(n.*) AS total,
   count(n.*) FILTER (WHERE n."status" = 'available' OR (n."status" = 'reserved' AND n."reserved_until" <= now())) AS available,
   count(n.*) FILTER (WHERE n."status" = 'reserved' AND n."reserved_until" > now()) AS reserved,
-  count(n.*) FILTER (WHERE n."status" = 'sold') AS sold`;
+  count(n.*) FILTER (WHERE n."status" = 'sold') AS sold,
+  count(n.*) FILTER (WHERE n."status" = 'simulated_sold') AS simulated_sold`;
 
 /** Progreso calculado siempre desde las tablas reales (sin contadores persistidos). */
 export async function getCampaignProgress(db: Database, userId: string, raffleId: string): Promise<CampaignProgress> {
@@ -98,10 +117,60 @@ export async function getCampaignProgress(db: Database, userId: string, raffleId
   const canManage = role === "owner" || role === "admin";
   const canSeeSellers = canManage || role === "editor";
 
-  const [c] = rowsOf<{ total: string; available: string; reserved: string; sold: string }>(
+  const [c] = rowsOf<{ total: string; available: string; reserved: string; sold: string; simulated_sold: string }>(
     await db.execute(sql`SELECT ${COUNT_COLS} FROM "raffle_numbers" n WHERE n."raffle_id" = ${raffle.id}`),
   );
-  const counts = { total: +c.total, available: +c.available, reservedDemo: +c.reserved, sold: +c.sold };
+  const [sales] = rowsOf<{ real_orders: string; real_revenue: string; demo_orders: string; demo_numbers: string; demo_amount: string }>(
+    await db.execute(sql`
+      WITH order_metrics AS (
+        SELECT o."id", o."is_demo", o."status", o."expires_at", o."total_cents", count(oi."id") AS item_count,
+          EXISTS (SELECT 1 FROM "audit_events" ae WHERE ae."organization_id" = o."organization_id"
+            AND ae."entity_type" = 'demo_purchase' AND ae."entity_id" = o."id" AND ae."action" = 'demo.purchase_confirmed') AS simulated_confirmed
+        FROM "orders" o LEFT JOIN "order_items" oi ON oi."order_id" = o."id"
+        WHERE o."raffle_id" = ${raffle.id} AND o."organization_id" = ${raffle.organizationId}
+        GROUP BY o."id"
+      )
+      SELECT
+        count(*) FILTER (WHERE NOT "is_demo" AND "status" = 'confirmed') AS real_orders,
+        coalesce(sum("total_cents") FILTER (WHERE NOT "is_demo" AND "status" = 'confirmed'), 0) AS real_revenue,
+        count(*) FILTER (WHERE "is_demo" AND NOT simulated_confirmed AND "status" = 'pending' AND "expires_at" > now()) AS demo_orders,
+        coalesce(sum(item_count) FILTER (WHERE "is_demo" AND NOT simulated_confirmed AND "status" = 'pending' AND "expires_at" > now()), 0) AS demo_numbers,
+        coalesce(sum("total_cents") FILTER (WHERE "is_demo" AND NOT simulated_confirmed AND "status" = 'pending' AND "expires_at" > now()), 0) AS demo_amount
+      FROM order_metrics`),
+  );
+  const [simulated] = rowsOf<{ orders: string; numbers: string; amount: string }>(
+    await db.execute(sql`
+      SELECT count(*) AS orders,
+        coalesce(sum(("metadata"->>'itemCount')::int), 0) AS numbers,
+        coalesce(sum(("metadata"->>'amountCents')::bigint), 0) AS amount
+      FROM "audit_events"
+      WHERE "organization_id" = ${raffle.organizationId} AND "entity_type" = 'demo_purchase'
+        AND "action" = 'demo.purchase_confirmed' AND "metadata"->>'raffleId' = ${raffle.id}`),
+  );
+  const [simulatedPayments] = rowsOf<{ payments: string; amount: string }>(
+    await db.execute(sql`
+      SELECT count(*) AS payments, coalesce(sum(("metadata"->>'amountCents')::bigint), 0) AS amount
+      FROM "audit_events"
+      WHERE "organization_id" = ${raffle.organizationId} AND "entity_type" = 'demo_payment'
+        AND "action" = 'demo.payment_simulated' AND "metadata"->>'raffleId' = ${raffle.id}`),
+  );
+  const counts = {
+    total: +c.total,
+    available: +c.available,
+    reservedDemo: +c.reserved,
+    simulatedSold: +c.simulated_sold,
+    sold: +c.sold,
+    realConfirmedOrders: +sales.real_orders,
+    realRevenueCents: +sales.real_revenue,
+    activeDemoOrders: +sales.demo_orders,
+    activeDemoNumbers: +sales.demo_numbers,
+    activeDemoAmountCents: +sales.demo_amount,
+    simulatedConfirmedOrders: +simulated.orders,
+    simulatedConfirmedNumbers: +simulated.numbers,
+    simulatedConfirmedAmountCents: +simulated.amount,
+    simulatedPayments: +simulatedPayments.payments,
+    simulatedPaidAmountCents: +simulatedPayments.amount,
+  };
 
   const [b] = rowsOf<{ total: string; completed: string; unassigned: string }>(
     await db.execute(sql`
@@ -117,10 +186,19 @@ export async function getCampaignProgress(db: Database, userId: string, raffleId
 
   let sellerList: SellerSummary[] = [];
   let history: AssignmentRecord[] = [];
+  const folios = rowsOf<{ folio: number; seller_id: string | null; display_name: string | null }>(
+    await db.execute(sql`
+      SELECT bk."folio", s."id" AS seller_id, s."display_name"
+      FROM "booklets" bk
+      LEFT JOIN "booklet_assignments" a ON a."booklet_id" = bk."id" AND a."raffle_id" = ${raffle.id} AND a."organization_id" = ${raffle.organizationId} AND a."ended_at" IS NULL
+      LEFT JOIN "sellers" s ON s."id" = a."seller_id" AND s."raffle_id" = ${raffle.id} AND s."organization_id" = ${raffle.organizationId}
+      WHERE bk."raffle_id" = ${raffle.id} AND bk."organization_id" = ${raffle.organizationId}
+      ORDER BY bk."folio"`),
+  ).map((f) => ({ folio: Number(f.folio), sellerId: f.seller_id, sellerName: f.display_name }));
   if (canSeeSellers) {
     const rows = rowsOf<{
       id: string; display_name: string; status: "active" | "revoked"; folios: number[] | null;
-      total: string; available: string; reserved: string; sold: string;
+      total: string; available: string; reserved: string; sold: string; simulated_sold: string;
     }>(
       await db.execute(sql`
         SELECT s."id", s."display_name", s."status",
@@ -128,7 +206,8 @@ export async function getCampaignProgress(db: Database, userId: string, raffleId
           count(n.*) AS total,
           count(n.*) FILTER (WHERE n."status" = 'available' OR (n."status" = 'reserved' AND n."reserved_until" <= now())) AS available,
           count(n.*) FILTER (WHERE n."status" = 'reserved' AND n."reserved_until" > now()) AS reserved,
-          count(n.*) FILTER (WHERE n."status" = 'sold') AS sold
+          count(n.*) FILTER (WHERE n."status" = 'sold') AS sold,
+          count(n.*) FILTER (WHERE n."status" = 'simulated_sold') AS simulated_sold
         FROM "sellers" s
         LEFT JOIN "booklet_assignments" a ON a."seller_id" = s."id" AND a."ended_at" IS NULL
         LEFT JOIN "booklets" bk ON bk."id" = a."booklet_id"
@@ -144,6 +223,7 @@ export async function getCampaignProgress(db: Database, userId: string, raffleId
       total: +r.total,
       available: +r.available,
       reservedDemo: +r.reserved,
+      simulatedSold: +r.simulated_sold,
       sold: +r.sold,
       linkPath: canManage && r.status === "active" ? `/v/${deriveSellerToken(r.id)}` : null,
     }));
@@ -166,6 +246,7 @@ export async function getCampaignProgress(db: Database, userId: string, raffleId
   return {
     counts,
     booklets: { total: +b.total, completed: +b.completed, unassigned: +b.unassigned },
+    folios,
     state: computeCampaignState({ salesClosesAt: raffle.salesClosesAt, drawAt: raffle.drawAt }, { ...counts }),
     sellers: sellerList,
     history,
@@ -399,7 +480,7 @@ export async function extendSalesClose(
 export interface SellerPortal {
   sellerName: string;
   raffle: { slug: string; title: string; salesClosesAt: Date | null };
-  folios: { folio: number; total: number; available: number; reservedDemo: number; sold: number }[];
+  folios: { folio: number; total: number; available: number; reservedDemo: number; simulatedSold: number; sold: number }[];
   salesOpen: boolean;
 }
 
@@ -420,7 +501,7 @@ export async function getSellerPortal(db: Database, token: string): Promise<Sell
       WHERE s."token_hash" = ${hashValue(token)} AND s."status" = 'active' AND r."status" = 'published'`),
   );
   if (!s) return null;
-  const rows = rowsOf<{ folio: number; total: string; available: string; reserved: string; sold: string }>(
+  const rows = rowsOf<{ folio: number; total: string; available: string; reserved: string; sold: string; simulated_sold: string }>(
     await db.execute(sql`
       SELECT bk."folio", ${COUNT_COLS}
       FROM "booklet_assignments" a
@@ -437,6 +518,7 @@ export async function getSellerPortal(db: Database, token: string): Promise<Sell
       total: +r.total,
       available: +r.available,
       reservedDemo: +r.reserved,
+      simulatedSold: +r.simulated_sold,
       sold: +r.sold,
     })),
     salesOpen: !s.closed,

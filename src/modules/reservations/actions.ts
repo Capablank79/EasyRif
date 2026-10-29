@@ -5,12 +5,16 @@ import { redirect } from "next/navigation";
 import { getDb } from "@/platform/db/client";
 import { rateLimit } from "./rate-limit";
 import { parseParticipantsPayload } from "./participants";
-import { releaseReservation, reserveNumbers, ReservationError } from "./service";
+import { confirmSimulatedPurchase, releaseReservation, reserveNumbers, ReservationError } from "./service";
+import { isDemoPurchaseConfirmationEnabled } from "./service";
+import { revalidatePath } from "next/cache";
 
 export interface ReserveState {
   error?: string;
   unavailable?: string[];
 }
+
+export interface ConfirmSimulationState { error?: string; ok?: string }
 
 const str = (fd: FormData, k: string) => {
   const v = fd.get(k);
@@ -54,4 +58,22 @@ export async function releaseAction(fd: FormData): Promise<void> {
   const slug = str(fd, "slug").slice(0, 120);
   if (rateLimit(`release:${await clientId()}`, 30, 60_000)) await releaseReservation(getDb(), token);
   redirect(`/r/${encodeURIComponent(slug)}/reserva/${token}`);
+}
+
+export async function confirmSimulatedPurchaseAction(_prev: ConfirmSimulationState, fd: FormData): Promise<ConfirmSimulationState> {
+  if (!isDemoPurchaseConfirmationEnabled()) return { error: "La confirmación simulada no está habilitada en este ambiente." };
+  if (!rateLimit(`demo-confirm:${await clientId()}`, 8, 60_000)) return { error: "Demasiados intentos. Espera un minuto e inténtalo de nuevo." };
+  const token = str(fd, "token");
+  try {
+    const result = await confirmSimulatedPurchase(getDb(), token);
+    const slug = str(fd, "slug").slice(0, 120);
+    revalidatePath(`/r/${encodeURIComponent(slug)}/reserva/${token}`);
+    revalidatePath(`/panel/rifas/${result.raffleId}`);
+    revalidatePath(`/panel/rifas/${result.raffleId}/responsables`);
+    return { ok: result.replay ? "La compra y el pago simulados ya estaban registrados." : "Compra y pago ficticios registrados. No hubo cobro ni venta real." };
+  } catch (e) {
+    if (e instanceof ReservationError) return { error: e.message };
+    console.error("demo_confirmation_failed");
+    return { error: "No se pudo registrar la simulación. La reserva y los números conservan su estado." };
+  }
 }

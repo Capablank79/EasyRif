@@ -4,19 +4,21 @@ import { useActionState, useCallback, useEffect, useMemo, useRef, useState } fro
 import { reserveAction, type ReserveState } from "@/modules/reservations/actions";
 import { formatMoney } from "@/modules/raffles/validation";
 import { participationLabel } from "@/modules/raffles/booklets";
+import { MAX_PARTICIPANTS_PAYLOAD } from "./participants";
 
-type Status = "available" | "reserved" | "sold";
+type Status = "available" | "reserved" | "simulated_sold" | "sold";
 type Filter = "all" | Status;
 interface PageData {
   items: { number: string; label: string; folio: number | null; status: Status }[];
   total: number;
   page: number;
   pageSize: number;
-  counts: { available: number; reserved: number; sold: number; total: number };
-  booklets: { folio: number; total: number; available: number; reserved: number; sold: number }[] | null;
+  counts: { available: number; reserved: number; simulatedSold: number; sold: number; total: number };
+  booklets: { folio: number; total: number; available: number; reserved: number; simulatedSold: number; sold: number }[] | null;
 }
 
-const LABEL: Record<Status, string> = { available: "Disponible", reserved: "Reservado", sold: "Vendido" };
+const LABEL: Record<Status, string> = { available: "Disponible", reserved: "Reservado", simulated_sold: "Vendido (simulado)", sold: "Vendido" };
+const COUNT_LABEL: Record<Status, string> = { available: "Disponibles", reserved: "Reservados", simulated_sold: "Vendidos (simulado)", sold: "Vendidos reales" };
 const PAGE_SIZE = 100;
 const newKey = () => crypto.randomUUID().replace(/-/g, "");
 
@@ -40,6 +42,8 @@ export function NumberPicker({
 }) {
   const isBooklets = mode === "booklets";
   const [parts, setParts] = useState<Record<string, { name: string; email: string; phone: string }>>({});
+  const [buyer, setBuyer] = useState({ name: "", email: "", phone: "" });
+  const selectionLimit = Math.min(maxSelection, MAX_PARTICIPANTS_PAYLOAD);
   const [folio, setFolio] = useState("");
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<Filter>("available");
@@ -59,7 +63,9 @@ export function NumberPicker({
     const res = await reserveAction(prev, fd);
     // Si el servidor informa numeros ya tomados, se quitan de la seleccion y se refresca.
     if (res.unavailable?.length) {
-      setSelected((s) => s.filter((n) => !res.unavailable!.includes(n)));
+      const remaining = selected.filter((n) => !res.unavailable!.includes(n));
+      setSelected(remaining);
+      if (remaining.length === 0) setShowForm(false);
       setRequestKey(newKey());
       setReloadTick((t) => t + 1);
     }
@@ -95,19 +101,19 @@ export function NumberPicker({
     (n: string) => {
       setSelected((s) => {
         if (s.includes(n)) return s.filter((x) => x !== n);
-        if (s.length >= maxSelection) return s;
+        if (s.length >= selectionLimit) return s;
         return [...s, n];
       });
       setRequestKey(newKey());
     },
-    [maxSelection],
+    [selectionLimit],
   );
 
   const total = selected.length * priceCents;
   const sorted = useMemo(() => [...selected].sort(), [selected]);
   const shown = (n: string) => participationLabel(n, isBooklets);
   const pages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
-  const atLimit = selected.length >= maxSelection;
+  const atLimit = selected.length >= selectionLimit;
 
   return (
     <section aria-labelledby="selector-titulo" className="space-y-4 pb-28 sm:pb-6">
@@ -118,14 +124,40 @@ export function NumberPicker({
         <p className="text-sm text-muted">
           Reserva temporal de demostración: dura {ttlMinutes} minutos y no implica pago ni participación real.
         </p>
+        <ol className="mt-3 grid gap-2 text-sm text-navy-900 sm:grid-cols-3" aria-label="Pasos de compra">
+          <li aria-current={!showForm ? "step" : undefined} className={`rounded-xl p-2 ${!showForm ? "bg-navy-900 font-semibold text-white" : "bg-sky-50"}`}>
+            1. Seleccionar números
+          </li>
+          <li aria-current={showForm ? "step" : undefined} className={`rounded-xl p-2 ${showForm ? "bg-navy-900 font-semibold text-white" : "bg-sky-50"}`}>
+            2. Datos del comprador y participantes
+          </li>
+          <li className="rounded-xl bg-sky-50 p-2">3. Resumen y pago simulado</li>
+        </ol>
+        {isBooklets && (
+          <p className="mt-2 text-xs text-muted">
+            Cada participación se identifica con folio y número. Ejemplo: T-0003 / N-15 es el número 15 del talonario 3.
+          </p>
+        )}
+        {sellerToken && (
+          <p role="note" className="mt-2 rounded-xl bg-sky-100 p-2 text-sm text-navy-900">
+            Estás usando el enlace personal de un responsable: solo verás los talonarios que se le asignaron y las reservas se asociarán a ese responsable.
+          </p>
+        )}
       </div>
 
+      {!showForm && state.error && (
+        <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">
+          {state.error}{state.unavailable?.length ? ` (${state.unavailable.map(shown).join(", ")})` : ""}
+        </p>
+      )}
+
+      {!showForm && <>
       {data && (
         <dl className="grid grid-cols-3 gap-2 text-center">
-          {(["available", "reserved", "sold"] as const).map((s) => (
+          {(["available", "reserved", "simulated_sold", "sold"] as const).map((s) => (
             <div key={s} className="rounded-xl border border-line bg-white p-2">
-              <dt className="text-xs text-muted">{LABEL[s]}s</dt>
-              <dd className="text-lg font-bold text-navy-900">{data.counts[s]}</dd>
+              <dt className="text-xs text-muted">{COUNT_LABEL[s]}</dt>
+              <dd className="text-lg font-bold text-navy-900">{s === "simulated_sold" ? data.counts.simulatedSold : data.counts[s]}</dd>
             </div>
           ))}
         </dl>
@@ -181,6 +213,7 @@ export function NumberPicker({
             <option value="all">Todos</option>
             <option value="reserved">Reservados</option>
             <option value="sold">Vendidos</option>
+            <option value="simulated_sold">Vendidos (simulado)</option>
           </select>
         </label>
       </div>
@@ -196,7 +229,9 @@ export function NumberPicker({
 
       <div aria-busy={loading} role="group" aria-label="Números de la rifa" className="min-h-40">
         {data && data.items.length === 0 && !loading && (
-          <p className="rounded-xl bg-sky-50 p-4 text-sm text-navy-900">No hay números que coincidan.</p>
+          <p className="rounded-xl bg-sky-50 p-4 text-sm text-navy-900">
+            No hay números que coincidan. Prueba con otro número o cambia el filtro a «Todos».
+          </p>
         )}
         <ul
           className={
@@ -225,12 +260,14 @@ export function NumberPicker({
                         ? "border-line bg-white text-navy-900 hover:bg-sky-100"
                         : it.status === "reserved"
                           ? "border-amber-300 bg-amber-50 text-amber-900"
+                          : it.status === "simulated_sold"
+                            ? "border-violet-300 bg-violet-50 text-violet-900"
                           : "border-line bg-gray-100 text-gray-500 line-through")
                   }
                 >
                   <span className="whitespace-nowrap">{it.label}</span>
                   <span className="text-[10px] font-normal leading-none">
-                    {isSel ? "Elegido" : free ? "Libre" : it.status === "reserved" ? "Reservado" : "Vendido"}
+                    {isSel ? "Elegido" : free ? "Libre" : LABEL[it.status]}
                   </span>
                 </button>
               </li>
@@ -268,21 +305,22 @@ export function NumberPicker({
           <div className="min-w-0 text-sm" aria-live="polite">
             <p className="font-semibold text-navy-900">
               {selected.length === 0
-                ? "Sin números seleccionados"
-                : `${selected.length} de ${maxSelection} · ${formatMoney(total, currency)}`}
+                ? `Elige al menos ${isBooklets ? "una participación" : "un número"} para continuar`
+              : `${selected.length} de ${selectionLimit} · ${formatMoney(total, currency)}`}
             </p>
             {selected.length > 0 && <p className="truncate text-muted">{sorted.map(shown).join(", ")}</p>}
-            {atLimit && <p className="text-xs text-amber-800">Alcanzó el máximo de {maxSelection} números.</p>}
+            {atLimit && <p className="text-xs text-amber-800">Alcanzó el máximo de {selectionLimit} números.</p>}
           </div>
           <div className="flex gap-2">
             {selected.length > 0 && (
               <button
                 type="button"
+                disabled={pending}
                 onClick={() => {
                   setSelected([]);
                   setShowForm(false);
                 }}
-                className="min-h-11 rounded-xl border border-line px-4 text-sm font-semibold"
+                className="min-h-11 rounded-xl border border-line px-4 text-sm font-semibold disabled:opacity-60"
               >
                 Limpiar
               </button>
@@ -301,6 +339,7 @@ export function NumberPicker({
           </div>
         </div>
       </div>
+      </>}
 
       {showForm && selected.length > 0 && (
         <form
@@ -310,51 +349,49 @@ export function NumberPicker({
           aria-labelledby="form-reserva-titulo"
         >
           <h3 id="form-reserva-titulo" className="font-bold text-navy-900">
-            Datos de contacto para la reserva de demostración
+            Paso 2: datos del comprador y participantes
           </h3>
+          <p className="rounded-xl bg-sky-50 p-3 text-sm text-navy-900">
+            Selección: <span className="font-semibold">{sorted.map(shown).join(", ")}</span> · {formatMoney(priceCents, currency)} por número · Total simulado{" "}
+            <span className="font-semibold">{formatMoney(total, currency)}</span>. La reserva dura {ttlMinutes} minutos.
+          </p>
           <input type="hidden" name="slug" value={slug} />
           <input type="hidden" name="numbers" value={sorted.join(",")} />
           <input type="hidden" name="requestKey" value={requestKey} />
           {sellerToken && <input type="hidden" name="sellerToken" value={sellerToken} />}
-          {isBooklets && (
-            <input
+          <input
               type="hidden"
               name="participants"
               value={JSON.stringify(Object.fromEntries(sorted.map((n) => [n, parts[n] ?? { name: "", email: "", phone: "" }])))}
-            />
-          )}
+          />
           <label className="block text-sm">
-            {isBooklets ? "Nombre de quien reserva" : "Nombre"}
-            <input name="name" required minLength={2} maxLength={100} autoComplete="name" className="mt-1 min-h-11 w-full rounded-xl border border-line px-3" />
+            Nombre del comprador
+            <input name="name" required minLength={2} maxLength={100} autoComplete="name" value={buyer.name} onChange={(e) => setBuyer((b) => ({ ...b, name: e.target.value }))} className="mt-1 min-h-11 w-full rounded-xl border border-line px-3" />
           </label>
           <label className="block text-sm">
             Correo (opcional si indica teléfono)
-            <input name="email" type="email" maxLength={254} autoComplete="email" className="mt-1 min-h-11 w-full rounded-xl border border-line px-3" />
+            <input name="email" type="email" maxLength={254} autoComplete="email" value={buyer.email} onChange={(e) => setBuyer((b) => ({ ...b, email: e.target.value }))} className="mt-1 min-h-11 w-full rounded-xl border border-line px-3" />
           </label>
           <label className="block text-sm">
             Teléfono (opcional si indica correo)
-            <input name="phone" type="tel" maxLength={20} autoComplete="tel" className="mt-1 min-h-11 w-full rounded-xl border border-line px-3" />
+            <input name="phone" type="tel" maxLength={20} autoComplete="tel" value={buyer.phone} onChange={(e) => setBuyer((b) => ({ ...b, phone: e.target.value }))} className="mt-1 min-h-11 w-full rounded-xl border border-line px-3" />
           </label>
-          {isBooklets && (
-            <fieldset className="space-y-3 rounded-xl border border-line p-3">
+          <fieldset className="space-y-3 rounded-xl border border-line p-3">
               <legend className="px-1 text-sm font-semibold text-navy-900">
                 Participante de cada número ({sorted.length})
               </legend>
               <p className="text-xs text-muted">
-                Cada participación puede pertenecer a una persona distinta. Nombre y correo son obligatorios; el teléfono es opcional.
+                Indica quién participa con cada número. Puedes registrar al comprador o a otra persona; el teléfono es opcional.
               </p>
-              {sorted.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const first = parts[sorted[0]] ?? { name: "", email: "", phone: "" };
-                    setParts((p) => ({ ...p, ...Object.fromEntries(sorted.map((n) => [n, { ...first }])) }));
-                  }}
-                  className="min-h-11 rounded-xl border border-line px-3 text-sm font-semibold"
-                >
-                  Copiar los datos del primero a todos
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setParts((p) => ({ ...p, ...Object.fromEntries(sorted.map((n) => [n, { ...buyer }])) }));
+                }}
+                className="min-h-11 rounded-xl border border-line px-3 text-sm font-semibold"
+              >
+                Copiar los datos del comprador a todos
+              </button>
               {sorted.map((n, i) => {
                 const v = parts[n] ?? { name: "", email: "", phone: "" };
                 const set = (k: "name" | "email" | "phone", val: string) =>
@@ -380,11 +417,10 @@ export function NumberPicker({
               <label className="flex min-h-11 items-start gap-2 text-sm text-navy-900">
                 <input type="checkbox" name="consent" required className="mt-1" />
                 <span>
-                  Confirmo que tengo autorización de cada participante para registrar sus datos con fines de esta demostración.
+                  Confirmo que cuento con autorización para registrar los datos de cada participante en esta demostración.
                 </span>
               </label>
-            </fieldset>
-          )}
+          </fieldset>
           <p className="text-xs text-muted">
             Solo se guardan para esta demostración. No se realiza ningún cobro.
           </p>
@@ -399,7 +435,10 @@ export function NumberPicker({
             disabled={pending}
             className="min-h-11 w-full rounded-xl bg-navy-900 px-5 text-sm font-semibold text-white hover:bg-navy-700 disabled:opacity-60 sm:w-auto"
           >
-            {pending ? "Reservando…" : "Confirmar reserva de demostración"}
+            {pending ? "Guardando reserva…" : "Crear reserva demo y ver resumen"}
+          </button>
+          <button type="button" disabled={pending} onClick={() => setShowForm(false)} className="min-h-11 rounded-xl border border-line px-5 text-sm font-semibold text-navy-900 disabled:opacity-60">
+            Volver a seleccionar números
           </button>
         </form>
       )}

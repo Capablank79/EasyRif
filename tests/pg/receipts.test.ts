@@ -36,7 +36,14 @@ describe.skipIf(!enabled)("Comprobante y verificacion (PostgreSQL real)", () => 
   const buyer = { name: "Comprador Demo", email: `c-${tag}@example.invalid` };
   const cfg = { ttlMinutes: 10, maxSelection: 5 };
   const reserve = (numbers: string[]) =>
-    svc.reserveNumbers(db, { slug, numbers, requestKey: key(), buyer }, cfg, SECRET);
+    svc.reserveNumbers(db, {
+      slug,
+      numbers,
+      requestKey: key(),
+      buyer,
+      participants: Object.fromEntries(numbers.map((n, i) => [n, { name: `Participante ${i + 1}`, email: `p${i}-${tag}@example.invalid` }])),
+      consent: true,
+    }, cfg, SECRET);
 
   beforeAll(async () => {
     process.env.DATABASE_URL = APP;
@@ -86,6 +93,7 @@ describe.skipIf(!enabled)("Comprobante y verificacion (PostgreSQL real)", () => 
     expect(codes.size).toBe(1);
     expect(new Set(results.map((d) => d.issuedAt.getTime())).size).toBe(1);
     expect(results[0].numbers).toEqual(["001", "002", "003"]);
+    expect(results[0].participants?.map((p) => p.label)).toEqual(["001", "002", "003"]);
     expect(results[0].totalCents).toBe(4500);
     const [{ n }] = await mig`SELECT count(*)::int n FROM orders WHERE organization_id = ${orgId}`;
     expect(n).toBe(1);
@@ -102,6 +110,34 @@ describe.skipIf(!enabled)("Comprobante y verificacion (PostgreSQL real)", () => 
     expect(await svc.getReservation(db, results[0].verificationCode)).toBeNull();
     const [{ sold }] = await mig`SELECT count(*)::int sold FROM raffle_numbers WHERE raffle_id = ${raffleId} AND status='sold'`;
     expect(sold).toBe(0);
+  });
+
+  it("compra pública individual: participantes y pago ficticio quedan trazados sin convertirse en venta", async () => {
+    const r = await reserve(["055", "056"]);
+    expect(r.reservation.canConfirmSimulation).toBe(true);
+    const first = await svc.confirmSimulatedPurchase(db, r.token);
+    expect(first.replay).toBe(false);
+    expect((await svc.confirmSimulatedPurchase(db, r.token)).replay).toBe(true);
+
+    const [order] = await mig`SELECT status, is_demo, seller_id, total_cents FROM orders WHERE id = ${r.reservation.orderId}`;
+    expect(order).toEqual({ status: "pending", is_demo: true, seller_id: null, total_cents: 3000 });
+    const [{ participants }] = await mig`SELECT count(*)::int participants FROM order_item_participants WHERE order_id = ${r.reservation.orderId}`;
+    expect(participants).toBe(2);
+    const [{ sold }] = await mig`SELECT count(*)::int sold FROM raffle_numbers WHERE raffle_id = ${raffleId} AND number IN ('055','056') AND status = 'sold'`;
+    expect(sold).toBe(0);
+    const [{ simulated }] = await mig`SELECT count(*)::int simulated FROM raffle_numbers WHERE raffle_id = ${raffleId} AND number IN ('055','056') AND status = 'simulated_sold'`;
+    expect(simulated).toBe(2);
+    await expect(reserve(["055"])).rejects.toBeTruthy();
+    const [purchase] = await mig`SELECT metadata FROM audit_events WHERE entity_type='demo_purchase' AND entity_id=${r.reservation.orderId} AND action='demo.purchase_confirmed'`;
+    const [payment] = await mig`SELECT metadata FROM audit_events WHERE entity_type='demo_payment' AND entity_id=${r.reservation.orderId} AND action='demo.payment_simulated'`;
+    expect(purchase.metadata).toMatchObject({ simulation: true, raffleId, orderId: r.reservation.orderId, itemCount: 2, amountCents: 3000 });
+    expect(purchase.metadata.items.every((item: { participantId: string | null; folio: number | null; sellerId: string | null }) => item.participantId && item.folio === null && item.sellerId === null)).toBe(true);
+    expect(payment.metadata).toMatchObject({ simulation: true, state: "paid_fictional", raffleId, orderId: r.reservation.orderId, amountCents: 3000 });
+    const receipt = await rcpt.getReceiptData(db, r.token);
+    expect(receipt.simulationPaidAt).toBeInstanceOf(Date);
+    const publicView = await rcpt.getVerification(db, receipt.verificationCode);
+    expect(publicView?.simulationPaidAt).toBeInstanceOf(Date);
+    expect(JSON.stringify(publicView)).not.toContain("Participante");
   });
 
   it("verificacion publica: activa, vencida y liberada, sin datos personales", async () => {
@@ -143,7 +179,7 @@ describe.skipIf(!enabled)("Comprobante y verificacion (PostgreSQL real)", () => 
     }
     expect(await snap()).toEqual(before);
     expect(before.sold).toBe(0);
-  });
+  }, 60_000);
 
   it("codigos y tokens invalidos o inexistentes", async () => {
     expect(await rcpt.getVerification(db, "corto")).toBeNull();

@@ -31,7 +31,7 @@ export default async function VerificarPage({ params }: { params: Promise<{ codi
   return (
     <Container className="max-w-2xl space-y-5 py-8">
       <div className="rounded-xl bg-lime-400 p-3 text-center text-sm font-semibold text-navy-950" role="status">
-        DEMOSTRACIÓN — SIN VALIDEZ DE COMPRA NI PARTICIPACIÓN
+        SIMULACIÓN — SIN VALIDEZ · DEMOSTRACIÓN — SIN VALIDEZ DE COMPRA NI PARTICIPACIÓN
       </div>
       <Card className="space-y-4">
         {!allowed ? (
@@ -53,6 +53,11 @@ export default async function VerificarPage({ params }: { params: Promise<{ codi
             </div>
             <h1 className="break-words text-2xl font-bold text-navy-900">{v.raffleTitle}</h1>
             <p className="text-sm">{STATUS[v.status].note}</p>
+            {v.simulationConfirmedAt && (
+              <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-950">
+                Se registró una compra y un pago ficticios el {formatDateTimeUtc(v.simulationPaidAt ?? v.simulationConfirmedAt)}. No acredita cobro, venta ni participación real.
+              </p>
+            )}
             <dl className="grid gap-3 text-sm sm:grid-cols-2">
               <div>
                 <dt className="text-muted">Números de la reserva ({v.numbers.length})</dt>

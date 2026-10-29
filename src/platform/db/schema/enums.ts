@@ -33,6 +33,7 @@ export const numberStatus = pgEnum("number_status", [
   "available",
   "reserved",
   "sold",
+  "simulated_sold",
 ]);
 export const sellerStatus = pgEnum("seller_status", ["active", "revoked"]);
 export const orderStatus = pgEnum("order_status", [

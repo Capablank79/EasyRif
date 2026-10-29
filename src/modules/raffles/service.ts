@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { assertCan, getActiveRole, requireOrgPermission, type OrgAction, type OrgRole } from "@/modules/organizations";
 import { recordAuditEvent } from "@/platform/audit";
 import { prizes, raffleNumbers, raffles } from "@/platform/db/schema";
@@ -61,6 +61,16 @@ export interface RaffleListItem {
   status: RaffleRow["status"];
   prizeCount: number;
   numberTotal: number;
+  availableNumbers: number;
+  activeReservations: number;
+  simulatedSold: number;
+  realSold: number;
+  soldPercent: number;
+  simulatedRevenueCents: number;
+  realRevenueCents: number;
+  unassignedBooklets: number;
+  salesClosesAt: Date | null;
+  currency: string;
   numberCount: number;
   numberingMode: RaffleRow["numberingMode"];
   bookletCount: number | null;
@@ -70,31 +80,96 @@ export interface RaffleListItem {
 
 export async function listRaffles(db: Database, userId: string, organizationId: string): Promise<RaffleListItem[]> {
   await requireOrgPermission(db, userId, organizationId, "raffle:read");
-  return db
-    .select({
-      id: raffles.id,
-      title: raffles.title,
-      slug: raffles.slug,
-      status: raffles.status,
-      numberCount: raffles.numberCount,
-      numberingMode: raffles.numberingMode,
-      bookletCount: raffles.bookletCount,
-      numbersPerBooklet: raffles.numbersPerBooklet,
-      createdAt: raffles.createdAt,
-      // Se califica "raffles"."id": Drizzle emite `id` sin tabla y dentro de la subconsulta se resolvía contra prizes/raffle_numbers.
-      prizeCount: sql<number>`(select count(*)::int from prizes p where p.raffle_id = "raffles"."id" and p.organization_id = "raffles"."organization_id")`,
-      numberTotal: sql<number>`(select count(*)::int from raffle_numbers n where n.raffle_id = "raffles"."id" and n.organization_id = "raffles"."organization_id")`,
-    })
-    .from(raffles)
-    .where(eq(raffles.organizationId, organizationId))
-    .orderBy(desc(raffles.createdAt));
+  type Row = {
+    id: string; title: string; slug: string; status: RaffleRow["status"];
+    prize_count: number | string; number_total: number | string; number_count: number | string;
+    numbering_mode: RaffleRow["numberingMode"]; booklet_count: number | null; numbers_per_booklet: number | null;
+    created_at: Date | string; sales_closes_at: Date | string | null; available_numbers: number | string; active_reservations: number | string;
+    simulated_sold: number | string; real_sold: number | string; sold_percent: number | string;
+    simulated_revenue: number | string; real_revenue: number | string; unassigned_booklets: number | string; currency: string;
+  };
+  const result = await db.execute(sql`
+    WITH prize_counts AS (
+      SELECT "raffle_id", count(*)::int AS prize_count
+      FROM "prizes" WHERE "organization_id" = ${organizationId} GROUP BY "raffle_id"
+    ), number_counts AS (
+      SELECT "raffle_id", count(*)::int AS number_total,
+        count(*) FILTER (WHERE "status" = 'available' OR ("status" = 'reserved' AND "reserved_until" <= now()))::int AS available_numbers,
+        count(*) FILTER (WHERE "status" = 'reserved' AND "reserved_until" > now())::int AS active_reservations,
+        count(*) FILTER (WHERE "status" = 'simulated_sold')::int AS simulated_sold,
+        count(*) FILTER (WHERE "status" = 'sold')::int AS real_sold
+      FROM "raffle_numbers" WHERE "organization_id" = ${organizationId} GROUP BY "raffle_id"
+    ), demo_payment_orders AS (
+      SELECT DISTINCT ON ("entity_id") "entity_id", "metadata"->>'raffleId' AS raffle_id,
+        coalesce(nullif("metadata"->>'amountCents', '')::bigint, 0) AS amount_cents
+      FROM "audit_events"
+      WHERE "organization_id" = ${organizationId} AND "entity_type" = 'demo_payment' AND "action" = 'demo.payment_simulated'
+      ORDER BY "entity_id", "created_at"
+    ), demo_revenue AS (
+      SELECT raffle_id, coalesce(sum(amount_cents), 0)::bigint AS revenue
+      FROM demo_payment_orders GROUP BY raffle_id
+    ), real_revenue AS (
+      SELECT "raffle_id", coalesce(sum("total_cents"), 0)::bigint AS revenue
+      FROM "orders" WHERE "organization_id" = ${organizationId} AND NOT "is_demo" AND "status" = 'confirmed'
+      GROUP BY "raffle_id"
+    ), booklet_counts AS (
+      SELECT b."raffle_id", count(*) FILTER (WHERE NOT EXISTS (
+        SELECT 1 FROM "booklet_assignments" a WHERE a."booklet_id" = b."id" AND a."ended_at" IS NULL
+      ))::int AS unassigned_booklets
+      FROM "booklets" b WHERE b."organization_id" = ${organizationId} GROUP BY b."raffle_id"
+    )
+    SELECT r."id", r."title", r."slug", r."status", r."number_count", r."numbering_mode",
+      r."booklet_count", r."numbers_per_booklet", r."created_at", r."currency", r."sales_closes_at",
+      coalesce(pc.prize_count, 0)::int AS prize_count,
+      coalesce(nc.number_total, 0)::int AS number_total,
+      coalesce(nc.available_numbers, 0)::int AS available_numbers,
+      coalesce(nc.active_reservations, 0)::int AS active_reservations,
+      coalesce(nc.simulated_sold, 0)::int AS simulated_sold,
+      coalesce(nc.real_sold, 0)::int AS real_sold,
+      CASE WHEN coalesce(nc.number_total, 0) = 0 THEN 0
+        ELSE round(((coalesce(nc.simulated_sold, 0) + coalesce(nc.real_sold, 0)) * 100.0) / nc.number_total, 1) END AS sold_percent,
+      coalesce(dr.revenue, 0)::bigint AS simulated_revenue,
+      coalesce(rr.revenue, 0)::bigint AS real_revenue,
+      coalesce(bc.unassigned_booklets, 0)::int AS unassigned_booklets
+    FROM "raffles" r
+    LEFT JOIN prize_counts pc ON pc."raffle_id" = r."id"
+    LEFT JOIN number_counts nc ON nc."raffle_id" = r."id"
+    LEFT JOIN demo_revenue dr ON dr.raffle_id = r."id"::text
+    LEFT JOIN real_revenue rr ON rr."raffle_id" = r."id"
+    LEFT JOIN booklet_counts bc ON bc."raffle_id" = r."id"
+    WHERE r."organization_id" = ${organizationId}
+    ORDER BY r."created_at" DESC`);
+  const rows = (Array.isArray(result) ? result : ((result as { rows?: Row[] }).rows ?? [])) as Row[];
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    slug: r.slug,
+    status: r.status,
+    prizeCount: Number(r.prize_count),
+    numberTotal: Number(r.number_total),
+    availableNumbers: Number(r.available_numbers),
+    activeReservations: Number(r.active_reservations),
+    simulatedSold: Number(r.simulated_sold),
+    realSold: Number(r.real_sold),
+    soldPercent: Number(r.sold_percent),
+    simulatedRevenueCents: Number(r.simulated_revenue),
+    realRevenueCents: Number(r.real_revenue),
+    unassignedBooklets: Number(r.unassigned_booklets),
+    salesClosesAt: r.sales_closes_at ? new Date(r.sales_closes_at) : null,
+    currency: r.currency,
+    numberCount: Number(r.number_count),
+    numberingMode: r.numbering_mode,
+    bookletCount: r.booklet_count,
+    numbersPerBooklet: r.numbers_per_booklet,
+    createdAt: new Date(r.created_at),
+  }));
 }
 
 export interface RaffleDetail {
   raffle: RaffleRow;
   role: OrgRole;
   prizes: PrizeRow[];
-  numbers: { total: number; available: number; reserved: number; sold: number; sample: string[] };
+  numbers: { total: number; available: number; reserved: number; simulatedSold: number; sold: number; sample: string[] };
 }
 
 export async function getRaffleDetail(db: Database, userId: string, raffleId: string): Promise<RaffleDetail> {
@@ -129,6 +204,7 @@ export async function getRaffleDetail(db: Database, userId: string, raffleId: st
       total: counts.reduce((a, c) => a + c.n, 0),
       available: by("available"),
       reserved: by("reserved"),
+      simulatedSold: by("simulated_sold"),
       sold: by("sold"),
       sample: sample.map((s) => s.number),
     },
@@ -420,7 +496,7 @@ export interface BookletOverview {
   raffle: RaffleRow;
   summaries: BookletSummary[];
   folio: number | null;
-  numbers: { label: string; status: "available" | "reserved" | "sold" }[];
+  numbers: { label: string; status: "available" | "reserved" | "simulated_sold" | "sold" }[];
 }
 
 /** Vista de administración: resumen por folio y series del folio elegido. Autoriza por rol y organización. */
@@ -436,7 +512,7 @@ export async function getBookletOverview(
   const chosen = folio !== null && summaries.some((s) => s.folio === folio) ? folio : null;
   const page = chosen
     ? await listPublicNumbers(db, raffle.id, { folio: chosen, pageSize: 200 })
-    : { items: [] as { label: string; status: "available" | "reserved" | "sold" }[] };
+    : { items: [] as { label: string; status: "available" | "reserved" | "simulated_sold" | "sold" }[] };
   return { raffle, summaries, folio: chosen, numbers: page.items.map((i) => ({ label: i.label, status: i.status })) };
 }
 

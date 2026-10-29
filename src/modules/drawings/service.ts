@@ -82,17 +82,18 @@ export interface RealDrawGate {
 
 export function evaluateRealDrawGate(
   raffle: { salesClosesAt: Date | null; drawAt: Date | null },
-  counts: { total: number; sold: number; reservedDemo: number },
+  counts: { total: number; sold: number; reservedDemo: number; simulatedSold?: number },
   prizeCount: number,
   now: Date = new Date(),
 ): RealDrawGate {
-  const campaign = computeCampaignState(raffle, { ...counts, available: counts.total - counts.sold - counts.reservedDemo }, now);
+  const campaign = computeCampaignState(raffle, { ...counts, available: counts.total - counts.sold - counts.reservedDemo - (counts.simulatedSold ?? 0) }, now);
   const blockers = [...campaign.drawBlockers];
   if (prizeCount === 0) blockers.push("La rifa no tiene premios.");
   else if (prizeCount > counts.total) blockers.push("Hay más premios que participaciones.");
   if (counts.reservedDemo > 0) {
     blockers.push(`Hay ${counts.reservedDemo} reservas pendientes (de demostración): no son ventas confirmadas.`);
   }
+  if ((counts.simulatedSold ?? 0) > 0) blockers.push(`Hay ${counts.simulatedSold} participaciones con pago ficticio: no son ventas reales confirmadas.`);
   blockers.push("No existen pagos confirmados: la confirmación de pagos no está implementada en esta fase.");
   const incomplete = counts.total === 0 || counts.sold < counts.total;
   return {
@@ -116,7 +117,7 @@ async function authorize(db: Database, userId: string, raffleId: string, action:
 export interface SimulationOverview {
   raffle: typeof raffles.$inferSelect;
   prizes: { position: number; title: string }[];
-  counts: { total: number; sold: number; reservedDemo: number };
+  counts: { total: number; sold: number; reservedDemo: number; simulatedSold: number };
   gate: RealDrawGate;
   runs: SimulationRunView[];
   canSimulate: boolean;
@@ -161,14 +162,15 @@ async function loadRuns(db: Database, raffleId: string, limit: number): Promise<
 }
 
 async function realCounts(db: Database, raffleId: string) {
-  const [c] = rowsOf<{ total: string; sold: string; reserved: string }>(
+  const [c] = rowsOf<{ total: string; sold: string; reserved: string; simulated_sold: string }>(
     await db.execute(sql`
       SELECT count(*) AS total,
         count(*) FILTER (WHERE "status" = 'sold') AS sold,
-        count(*) FILTER (WHERE "status" = 'reserved' AND "reserved_until" > now()) AS reserved
+        count(*) FILTER (WHERE "status" = 'reserved' AND "reserved_until" > now()) AS reserved,
+        count(*) FILTER (WHERE "status" = 'simulated_sold') AS simulated_sold
       FROM "raffle_numbers" WHERE "raffle_id" = ${raffleId}`),
   );
-  return { total: +c.total, sold: +c.sold, reservedDemo: +c.reserved };
+  return { total: +c.total, sold: +c.sold, reservedDemo: +c.reserved, simulatedSold: +c.simulated_sold };
 }
 
 export async function getSimulationOverview(db: Database, userId: string, raffleId: string): Promise<SimulationOverview> {

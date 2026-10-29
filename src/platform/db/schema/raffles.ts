@@ -269,6 +269,8 @@ export const sellers = pgTable(
     organizationId: uuid("organization_id").notNull(),
     raffleId: uuid("raffle_id"),
     displayName: text("display_name").notNull(),
+    email: text("email"),
+    phone: text("phone"),
     tokenHash: text("token_hash").notNull(),
     status: sellerStatus("status").notNull().default("active"),
     createdAt: createdAt(),
@@ -287,9 +289,12 @@ export const sellers = pgTable(
     }).onDelete("restrict"),
     unique("sellers_token_hash_uq").on(t.tokenHash),
     unique("sellers_id_org_uq").on(t.id, t.organizationId),
+    uniqueIndex("sellers_raffle_email_uq").on(t.raffleId, t.email).where(sql`${t.email} is not null`),
     index("sellers_org_idx").on(t.organizationId),
     check("sellers_token_hash_format", sql`${t.tokenHash} ~ '^[0-9a-f]{64}$'`),
     check("sellers_name_len", sql`char_length(btrim(${t.displayName})) between 1 and 160`),
+    check("sellers_email_format", sql`${t.email} is null or (${t.email} = lower(btrim(${t.email})) and char_length(${t.email}) <= 254 and ${t.email} ~ '^[^[:space:]@]+@[^[:space:]@]+[.][^[:space:]@]+$')`),
+    check("sellers_phone_format", sql`${t.phone} is null or ${t.phone} ~ '^[0-9+()[:space:]-]{6,20}$'`),
   ],
 );
 

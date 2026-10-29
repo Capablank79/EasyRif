@@ -2,6 +2,7 @@ import { createHash, createHmac } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { Database } from "@/platform/db/types";
 import { participationLabel } from "@/modules/raffles/booklets";
+import { recordAuditEvent } from "@/platform/audit";
 import { validateParticipant, type ParticipantInput, type ParticipantValue } from "./participants";
 
 export type ReservationErrorCode =
@@ -86,19 +87,31 @@ export interface ReservationView {
   numbers: string[];
   /** Referencias visibles, en el mismo orden que `numbers`. */
   labels: string[];
+  participants: { label: string; name: string }[];
+  unitPriceCents: number;
   totalCents: number;
   currency: string;
   expiresAt: Date;
   raffleTitle: string;
   raffleSlug: string;
   isDemo: true;
+  canConfirmSimulation: boolean;
+  simulationConfirmedAt: Date | null;
+  simulationPaidAt: Date | null;
+}
+
+/** La confirmación ficticia solo existe en desarrollo/pruebas o con autorización explícita en producción. */
+export function isDemoPurchaseConfirmationEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  return env.NODE_ENV !== "production" || env.EASYRIF_ENABLE_DEMO_CONFIRMATION === "true";
 }
 
 /** Libera (en la transaccion en curso) las reservas vencidas de una rifa. */
 export async function expireStale(tx: Database, raffleId: string): Promise<void> {
   await tx.execute(sql`
     UPDATE "orders" SET "status" = 'expired', "updated_at" = now()
-    WHERE "raffle_id" = ${raffleId} AND "is_demo" AND "status" = 'pending' AND "expires_at" <= now()`);
+    WHERE "raffle_id" = ${raffleId} AND "is_demo" AND "status" = 'pending' AND "expires_at" <= now()
+      AND NOT EXISTS (SELECT 1 FROM "audit_events" ae WHERE ae."organization_id" = "orders"."organization_id"
+        AND ae."entity_type" = 'demo_purchase' AND ae."entity_id" = "orders"."id" AND ae."action" = 'demo.purchase_confirmed')`);
   await tx.execute(sql`
     UPDATE "raffle_numbers" SET "status" = 'available', "reservation_id" = NULL, "reserved_until" = NULL
     WHERE "raffle_id" = ${raffleId} AND "status" = 'reserved' AND "reserved_until" <= now()`);
@@ -107,15 +120,26 @@ export async function expireStale(tx: Database, raffleId: string): Promise<void>
 async function loadView(tx: Database, orderId: string): Promise<ReservationView> {
   const [o] = rowsOf<{
     id: string; status: ReservationView["status"]; total_cents: number; currency: string;
-    expires_at: Date | string; title: string; slug: string;
+    expires_at: Date | string; title: string; slug: string; seller_id: string | null;
+    price_cents: number; raffle_status: string; simulation_confirmed_at: Date | string | null; simulation_paid_at: Date | string | null;
   }>(
     await tx.execute(sql`
-      SELECT o."id", o."status", o."total_cents", o."currency", o."expires_at", r."title", r."slug"
+      SELECT o."id", o."status", o."total_cents", o."currency", o."expires_at", o."seller_id",
+        r."title", r."slug", r."price_cents", r."status" AS raffle_status,
+        (SELECT ae."created_at" FROM "audit_events" ae WHERE ae."organization_id" = o."organization_id"
+          AND ae."entity_type" = 'demo_purchase' AND ae."entity_id" = o."id" AND ae."action" = 'demo.purchase_confirmed'
+          ORDER BY ae."created_at" LIMIT 1) AS simulation_confirmed_at,
+        (SELECT ae."created_at" FROM "audit_events" ae WHERE ae."organization_id" = o."organization_id"
+          AND ae."entity_type" = 'demo_payment' AND ae."entity_id" = o."id" AND ae."action" = 'demo.payment_simulated'
+          ORDER BY ae."created_at" LIMIT 1) AS simulation_paid_at
       FROM "orders" o JOIN "raffles" r ON r."id" = o."raffle_id" WHERE o."id" = ${orderId}`),
   );
-  const nums = rowsOf<{ number: string; local_number: number | null }>(
+  const nums = rowsOf<{ number: string; local_number: number | null; participant_name: string | null }>(
     await tx.execute(sql`
-      SELECT n."number", n."local_number" FROM "order_items" i JOIN "raffle_numbers" n ON n."id" = i."raffle_number_id"
+      SELECT n."number", n."local_number", p."name" AS participant_name
+      FROM "order_items" i
+      JOIN "raffle_numbers" n ON n."id" = i."raffle_number_id"
+      LEFT JOIN "order_item_participants" p ON p."order_item_id" = i."id" AND p."order_id" = i."order_id"
       WHERE i."order_id" = ${orderId} ORDER BY n."number"`),
   );
   return {
@@ -123,12 +147,17 @@ async function loadView(tx: Database, orderId: string): Promise<ReservationView>
     status: o.status,
     numbers: nums.map((n) => n.number),
     labels: nums.map((n) => participationLabel(n.number, n.local_number !== null)),
+    participants: nums.flatMap((n) => n.participant_name ? [{ label: participationLabel(n.number, n.local_number !== null), name: n.participant_name }] : []),
+    unitPriceCents: Number(o.price_cents),
     totalCents: Number(o.total_cents),
     currency: o.currency,
     expiresAt: new Date(o.expires_at),
     raffleTitle: o.title,
     raffleSlug: o.slug,
     isDemo: true,
+    canConfirmSimulation: o.status === "pending" && o.raffle_status === "published",
+    simulationConfirmedAt: o.simulation_confirmed_at ? new Date(o.simulation_confirmed_at) : null,
+    simulationPaidAt: o.simulation_paid_at ? new Date(o.simulation_paid_at) : null,
   };
 }
 
@@ -137,7 +166,7 @@ export interface ReserveInput {
   numbers: string[];
   requestKey: string;
   buyer: BuyerInput;
-  /** Talonarios: datos del participante de cada número, indexados por la clave de la participación. */
+  /** Datos del participante de cada número, indexados por la clave de la participación. */
   participants?: Record<string, Partial<ParticipantInput>>;
   /** El comprador confirma estar autorizado a facilitar datos de terceros. */
   consent?: boolean;
@@ -197,21 +226,18 @@ export async function reserveNumbers(
 
     if (raffle.closed) throw new ReservationError("state", "Las ventas de esta campaña ya cerraron.");
 
-    // Participantes: obligatorios y uno por numero en talonarios; no se admiten en rifas individuales.
+    // Cada número debe conservar el vínculo con su participante, también en rifas individuales.
     const participants = new Map<string, ParticipantValue>();
-    if (raffle.numbering_mode === "booklets") {
-      if (!input.consent)
-        throw new ReservationError("invalid", "Confirme que esta autorizado a facilitar los datos de los participantes.");
-      const given = input.participants ?? {};
-      const extra = Object.keys(given).filter((k) => !numbers.includes(k));
-      if (extra.length > 0) throw new ReservationError("invalid", "Hay datos de participantes que no corresponden a la seleccion.");
-      for (const n of numbers) {
-        const p = validateParticipant(given[n]);
-        if (!p.ok) throw new ReservationError("invalid", "Revise los datos de cada participante (nombre y correo son obligatorios).");
-        participants.set(n, p.value);
-      }
-    } else if (input.participants && Object.keys(input.participants).length > 0) {
-      throw new ReservationError("invalid", "Esta rifa no admite participantes por numero.");
+    if (!input.consent) {
+      throw new ReservationError("invalid", "Confirme que cuenta con autorización para registrar los datos de cada participante.");
+    }
+    const given = input.participants ?? {};
+    const extra = Object.keys(given).filter((k) => !numbers.includes(k));
+    if (extra.length > 0) throw new ReservationError("invalid", "Hay datos de participantes que no corresponden a la selección.");
+    for (const n of numbers) {
+      const p = validateParticipant(given[n]);
+      if (!p.ok) throw new ReservationError("invalid", "Revise los datos de cada participante: nombre y correo son obligatorios.");
+      participants.set(n, p.value);
     }
 
     let sellerId: string | null = null;
@@ -312,6 +338,143 @@ export async function getReservation(db: Database, token: string): Promise<Reser
   });
 }
 
+/**
+ * Registra una confirmación ficticia como evento de auditoría append-only. El pedido demo permanece
+ * `pending`; conserva el estado de venta real separado y marca los números como vendidos en DEMO.
+ */
+export async function confirmSimulatedPurchase(
+  db: Database,
+  token: string,
+): Promise<{ confirmedAt: Date; replay: boolean; raffleId: string }> {
+  if (!isDemoPurchaseConfirmationEnabled()) throw new ReservationError("state", "La simulación de compra no está habilitada en este ambiente.");
+  if (!TOKEN_RE.test(token)) throw new ReservationError("not_found", "Reserva no encontrada.");
+  const accessHash = hashValue(token);
+  return db.transaction(async (rawTx) => {
+    const tx = asDb(rawTx);
+    const [initial] = rowsOf<{ id: string; raffle_id: string; organization_id: string }>(
+      await tx.execute(sql`SELECT "id", "raffle_id", "organization_id" FROM "orders" WHERE "access_token_hash" = ${accessHash} AND "is_demo"`),
+    );
+    if (!initial) throw new ReservationError("not_found", "Reserva no encontrada.");
+
+    // Serializa con asignaciones y otras confirmaciones de esta rifa; el registro es idempotente.
+    const [raffle] = rowsOf<{ id: string; numbering_mode: string; status: string }>(
+      await tx.execute(sql`
+        SELECT "id", "numbering_mode", "status" FROM "raffles"
+        WHERE "id" = ${initial.raffle_id} AND "organization_id" = ${initial.organization_id} FOR UPDATE`),
+    );
+    if (!raffle || raffle.status !== "published") {
+      throw new ReservationError("state", "La confirmación simulada solo está disponible para rifas publicadas.");
+    }
+    const [prior] = rowsOf<{ created_at: Date | string }>(
+      await tx.execute(sql`
+        SELECT "created_at" FROM "audit_events" WHERE "organization_id" = ${initial.organization_id}
+          AND "entity_type" = 'demo_purchase' AND "entity_id" = ${initial.id} AND "action" = 'demo.purchase_confirmed'
+        ORDER BY "created_at" LIMIT 1`),
+    );
+    if (prior) return { confirmedAt: new Date(prior.created_at), replay: true, raffleId: raffle.id };
+
+    await expireStale(tx, raffle.id);
+    const [order] = rowsOf<{ id: string; seller_id: string | null; status: string; expires_at: Date | string; total_cents: number; currency: string }>(
+      await tx.execute(sql`
+        SELECT "id", "seller_id", "status", "expires_at", "total_cents", "currency"
+        FROM "orders" WHERE "id" = ${initial.id} AND "organization_id" = ${initial.organization_id}
+          AND "is_demo" AND "access_token_hash" = ${accessHash} FOR UPDATE`),
+    );
+    if (!order || order.status !== "pending" || new Date(order.expires_at).getTime() <= Date.now()) {
+      throw new ReservationError("state", "La reserva ya no está activa; no se registró ninguna simulación.");
+    }
+    const items = rowsOf<{
+      order_item_id: string; raffle_number_id: string; number: string; booklet_id: string | null;
+      folio: number | null; seller_id: string | null; participant_id: string | null; reservation_id: string | null;
+      status: string; reserved_until: Date | string | null;
+    }>(
+      await tx.execute(sql`
+        SELECT oi."id" AS order_item_id, n."id" AS raffle_number_id, n."number", bk."id" AS booklet_id,
+          bk."folio", a."seller_id", p."id" AS participant_id, n."reservation_id", n."status", n."reserved_until"
+        FROM "order_items" oi
+        JOIN "raffle_numbers" n ON n."id" = oi."raffle_number_id" AND n."raffle_id" = oi."raffle_id" AND n."organization_id" = oi."organization_id"
+        LEFT JOIN "booklets" bk ON bk."id" = n."booklet_id" AND bk."raffle_id" = oi."raffle_id" AND bk."organization_id" = oi."organization_id"
+        LEFT JOIN "booklet_assignments" a ON a."booklet_id" = bk."id" AND a."raffle_id" = oi."raffle_id" AND a."organization_id" = oi."organization_id" AND a."ended_at" IS NULL
+        LEFT JOIN "order_item_participants" p ON p."order_item_id" = oi."id" AND p."order_id" = oi."order_id" AND p."raffle_id" = oi."raffle_id"
+        WHERE oi."order_id" = ${order.id} AND oi."raffle_id" = ${raffle.id} AND oi."organization_id" = ${initial.organization_id}
+        ORDER BY n."number" FOR UPDATE OF n`),
+    );
+    if (items.length === 0 || items.some((i) =>
+      !i.participant_id || i.status !== "reserved" || i.reservation_id !== order.id || !i.reserved_until ||
+      new Date(i.reserved_until).getTime() <= Date.now() ||
+      (raffle.numbering_mode === "booklets" ? !i.booklet_id || i.folio === null : i.booklet_id !== null || i.folio !== null) ||
+      (order.seller_id !== null && i.seller_id !== order.seller_id)
+    )) {
+      throw new ReservationError("state", "La asignación, los participantes o la reserva cambiaron. No se registró la simulación.");
+    }
+
+    // La simulación consume la disponibilidad, pero nunca convierte el número en una venta real.
+    const soldDemo = rowsOf<{ id: string }>(await tx.execute(sql`
+      UPDATE "raffle_numbers" SET "status" = 'simulated_sold', "reservation_id" = NULL,
+        "reserved_until" = NULL, "updated_at" = now()
+      WHERE "raffle_id" = ${raffle.id} AND "organization_id" = ${initial.organization_id}
+        AND "reservation_id" = ${order.id} AND "status" = 'reserved'
+        AND "id" IN (${sql.join(items.map((i) => sql`${i.raffle_number_id}`), sql`, `)})
+      RETURNING "id"`));
+    if (soldDemo.length !== items.length) {
+      throw new ReservationError("state", "La reserva cambió durante la confirmación; no se registró la simulación.");
+    }
+
+    await recordAuditEvent(tx, {
+      organizationId: initial.organization_id,
+      actorId: null,
+      entityType: "demo_purchase",
+      entityId: order.id,
+      action: "demo.purchase_confirmed",
+      metadata: {
+        simulation: true,
+        state: "confirmed_fictional",
+        raffleId: raffle.id,
+        orderId: order.id,
+        sellerId: order.seller_id,
+        amountCents: Number(order.total_cents),
+        currency: order.currency,
+        itemCount: items.length,
+        items: items.map((i) => ({
+          orderItemId: i.order_item_id,
+          raffleNumberId: i.raffle_number_id,
+          number: i.number,
+          bookletId: i.booklet_id,
+          folio: i.folio === null ? null : Number(i.folio),
+          sellerId: i.seller_id,
+          participantId: i.participant_id,
+          state: "confirmed_fictional",
+        })),
+      },
+    });
+    await recordAuditEvent(tx, {
+      organizationId: initial.organization_id,
+      actorId: null,
+      entityType: "demo_payment",
+      entityId: order.id,
+      action: "demo.payment_simulated",
+      metadata: {
+        simulation: true,
+        state: "paid_fictional",
+        raffleId: raffle.id,
+        orderId: order.id,
+        sellerId: order.seller_id,
+        amountCents: Number(order.total_cents),
+        currency: order.currency,
+        itemCount: items.length,
+        purchaseState: "confirmed_fictional",
+      },
+    });
+    const [created] = rowsOf<{ created_at: Date | string }>(
+      await tx.execute(sql`
+        SELECT "created_at" FROM "audit_events" WHERE "organization_id" = ${initial.organization_id}
+          AND "entity_type" = 'demo_purchase' AND "entity_id" = ${order.id} AND "action" = 'demo.purchase_confirmed'
+        ORDER BY "created_at" LIMIT 1`),
+    );
+    return { confirmedAt: new Date(created.created_at), replay: false, raffleId: raffle.id };
+  });
+}
+
 /** Libera solo la reserva identificada por el token. Idempotente. */
 export async function releaseReservation(db: Database, token: string): Promise<ReservationView | null> {
   if (!TOKEN_RE.test(token)) return null;
@@ -328,6 +491,10 @@ export async function releaseReservation(db: Database, token: string): Promise<R
     const [cur] = rowsOf<{ status: string }>(
       await tx.execute(sql`SELECT "status" FROM "orders" WHERE "id" = ${o.id}`),
     );
+    const [confirmed] = rowsOf<{ id: string }>(await tx.execute(sql`
+      SELECT "id" FROM "audit_events" WHERE "organization_id" = (SELECT "organization_id" FROM "orders" WHERE "id" = ${o.id})
+        AND "entity_type" = 'demo_purchase' AND "entity_id" = ${o.id} AND "action" = 'demo.purchase_confirmed' LIMIT 1`));
+    if (confirmed) return loadView(tx, o.id);
     if (cur.status === "pending") {
       await tx.execute(sql`UPDATE "orders" SET "status" = 'cancelled', "updated_at" = now() WHERE "id" = ${o.id}`);
       await tx.execute(sql`
@@ -338,11 +505,11 @@ export async function releaseReservation(db: Database, token: string): Promise<R
   });
 }
 
-export type NumberFilter = "all" | "available" | "reserved" | "sold";
+export type NumberFilter = "all" | "available" | "reserved" | "simulated_sold" | "sold";
 
 export interface NumberPage {
   /** `number` es la clave única; `label` la referencia visible ("T-0007 / N-14" o el propio número). */
-  items: { number: string; label: string; folio: number | null; status: "available" | "reserved" | "sold" }[];
+  items: { number: string; label: string; folio: number | null; status: "available" | "reserved" | "simulated_sold" | "sold" }[];
   total: number;
   page: number;
   pageSize: number;
@@ -352,22 +519,24 @@ export interface RaffleCounts {
   available: number;
   reserved: number;
   sold: number;
+  simulatedSold: number;
   total: number;
 }
 
 /** Contadores reales: una reserva vencida cuenta como disponible. */
 export async function getPublicCounts(db: Database, raffleId: string, folio?: number | null): Promise<RaffleCounts> {
   const folioCond = folio ? sql` AND "booklet_id" IN (SELECT "id" FROM "booklets" WHERE "raffle_id" = ${raffleId} AND "folio" = ${folio})` : sql``;
-  const [c] = rowsOf<{ available: string; reserved: string; sold: string; total: string }>(
+  const [c] = rowsOf<{ available: string; reserved: string; sold: string; simulated_sold: string; total: string }>(
     await db.execute(sql`
       SELECT
         count(*) FILTER (WHERE "status" = 'available' OR ("status" = 'reserved' AND "reserved_until" <= now())) AS available,
         count(*) FILTER (WHERE "status" = 'reserved' AND "reserved_until" > now()) AS reserved,
         count(*) FILTER (WHERE "status" = 'sold') AS sold,
+        count(*) FILTER (WHERE "status" = 'simulated_sold') AS simulated_sold,
         count(*) AS total
       FROM "raffle_numbers" WHERE "raffle_id" = ${raffleId}${folioCond}`),
   );
-  return { available: +c.available, reserved: +c.reserved, sold: +c.sold, total: +c.total };
+  return { available: +c.available, reserved: +c.reserved, sold: +c.sold, simulatedSold: +c.simulated_sold, total: +c.total };
 }
 
 export interface BookletSummary {
@@ -376,17 +545,19 @@ export interface BookletSummary {
   available: number;
   reserved: number;
   sold: number;
+  simulatedSold: number;
 }
 
 /** Disponibilidad efectiva por talonario (una reserva vencida cuenta como disponible). */
 export async function listBookletSummaries(db: Database, raffleId: string): Promise<BookletSummary[]> {
-  const rows = rowsOf<{ folio: number; total: string; available: string; reserved: string; sold: string }>(
+  const rows = rowsOf<{ folio: number; total: string; available: string; reserved: string; sold: string; simulated_sold: string }>(
     await db.execute(sql`
       SELECT b."folio",
         count(n.*) AS total,
         count(n.*) FILTER (WHERE n."status" = 'available' OR (n."status" = 'reserved' AND n."reserved_until" <= now())) AS available,
         count(n.*) FILTER (WHERE n."status" = 'reserved' AND n."reserved_until" > now()) AS reserved,
-        count(n.*) FILTER (WHERE n."status" = 'sold') AS sold
+        count(n.*) FILTER (WHERE n."status" = 'sold') AS sold,
+        count(n.*) FILTER (WHERE n."status" = 'simulated_sold') AS simulated_sold
       FROM "booklets" b LEFT JOIN "raffle_numbers" n ON n."booklet_id" = b."id"
       WHERE b."raffle_id" = ${raffleId}
       GROUP BY b."folio" ORDER BY b."folio"`),
@@ -397,6 +568,7 @@ export async function listBookletSummaries(db: Database, raffleId: string): Prom
     available: +r.available,
     reserved: +r.reserved,
     sold: +r.sold,
+    simulatedSold: +r.simulated_sold,
   }));
 }
 
@@ -420,7 +592,7 @@ export async function listPublicNumbers(
   const where = sql.join(conds, sql` AND `);
   const from = sql`"raffle_numbers" n LEFT JOIN "booklets" b ON b."id" = n."booklet_id"`;
   const [t] = rowsOf<{ n: string }>(await db.execute(sql`SELECT count(*) AS n FROM ${from} WHERE ${where}`));
-  const items = rowsOf<{ number: string; folio: number | null; local_number: number | null; st: "available" | "reserved" | "sold" }>(
+  const items = rowsOf<{ number: string; folio: number | null; local_number: number | null; st: "available" | "reserved" | "simulated_sold" | "sold" }>(
     await db.execute(sql`
       SELECT n."number", b."folio", n."local_number", (${eff}) AS st FROM ${from} WHERE ${where}
       ORDER BY n."number" LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`),

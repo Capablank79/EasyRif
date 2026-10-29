@@ -20,14 +20,14 @@ export default async function NuevaRifaPage({ searchParams }: { searchParams: Pr
       <section className="bg-navy-900 text-white">
         <Container className="py-8">
           <p className="text-sm text-sky-100">{active.name}</p>
-          <h1 className="mt-1 text-2xl font-bold sm:text-3xl">Nueva rifa</h1>
+          <h1 className="mt-1 text-2xl font-bold sm:text-3xl">Crear una rifa</h1>
         </Container>
       </section>
       <Container className="space-y-6 py-6">
         <PanelNav active="rifas" orgId={active.id} />
         <Card className="max-w-2xl">
           <p className="mb-4 text-sm text-muted">
-            Se creará como borrador. Después podrás agregar premios, generar los números y publicarla.
+            Te guiamos en 3 pasos cortos. Se guardará como borrador: nada es público hasta que tú la publiques. Después podrás agregar premios e imágenes y generar los números.
           </p>
           <RaffleForm
             mode="create"

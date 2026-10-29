@@ -34,7 +34,14 @@ describe.skipIf(!enabled)("Reservas demo (PostgreSQL real)", () => {
   const buyer = { name: "Comprador Demo", email: `c-${tag}@example.invalid` };
   const cfg = { ttlMinutes: 10, maxSelection: 5 };
   const reserve = (numbers: string[], requestKey = key(), s = slug) =>
-    svc.reserveNumbers(db, { slug: s, numbers, requestKey, buyer }, cfg, SECRET);
+    svc.reserveNumbers(db, {
+      slug: s,
+      numbers,
+      requestKey,
+      buyer,
+      participants: Object.fromEntries(numbers.map((n, i) => [n, { name: `Participante ${i + 1}`, email: `p${i}-${tag}@example.invalid` }])),
+      consent: true,
+    }, cfg, SECRET);
   const state = async (n: string) =>
     (await mig`SELECT status, reservation_id, reserved_until FROM raffle_numbers WHERE raffle_id = ${raffleId} AND number = ${n}`)[0];
 

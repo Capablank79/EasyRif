@@ -15,7 +15,7 @@ const SKY_100 = "#e0f2fe";
 const LINE = "#cfe3f3";
 const MUTED = "#475569";
 
-export const DEMO_LEGEND = "DEMOSTRACIÓN — SIN VALIDEZ DE COMPRA NI PARTICIPACIÓN";
+export const DEMO_LEGEND = "SIMULACIÓN — SIN VALIDEZ · PAGO FICTICIO · DEMOSTRACIÓN — SIN VALIDEZ DE COMPRA NI PARTICIPACIÓN";
 
 const W = 595.28;
 const H = 841.89;
@@ -171,6 +171,10 @@ export async function buildReceiptPdf(data: ReceiptData, baseUrl: string): Promi
   field(doc, "Cantidad de números", String(data.numbers.length), bx, y, colW);
   field(doc, "Precio unitario (informativo)", formatAmount(data.unitPriceCents, data.currency), bx + colW, y, colW);
   field(doc, "Total (no cobrado)", formatAmount(data.totalCents, data.currency), bx + colW * 2, y, colW);
+  if (data.simulationConfirmedAt) {
+    const simulationDate = data.simulationPaidAt ?? data.simulationConfirmedAt;
+    field(doc, "Compra/pago ficticios · sin validez", formatUtc(simulationDate), bx, y + 38, bw);
+  }
 
   perforation(doc, top + 296);
 

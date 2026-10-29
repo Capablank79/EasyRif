@@ -185,9 +185,49 @@ describe.skipIf(!enabled)("Talonarios colaborativos (PostgreSQL real)", () => {
     const prog = await camp.getCampaignProgress(db, userId, raffleId);
     expect(prog.booklets.unassigned).toBe(2);
     expect(prog.counts.total).toBe(100);
+    expect(prog.folios).toEqual([
+      { folio: 1, sellerId: sellerA, sellerName: "Vendedora A" },
+      { folio: 2, sellerId: sellerA, sellerName: "Vendedora A" },
+      { folio: 3, sellerId: sellerB, sellerName: "Vendedor B" },
+      { folio: 4, sellerId: null, sellerName: null },
+      { folio: 5, sellerId: null, sellerName: null },
+    ]);
+    expect(prog.counts.realConfirmedOrders).toBe(0);
+    expect(prog.counts.realRevenueCents).toBe(0);
+    expect(prog.counts.activeDemoOrders).toBe(0);
+    expect(prog.counts.activeDemoNumbers).toBe(0);
+    expect(prog.counts.activeDemoAmountCents).toBe(0);
+    expect(prog.counts.simulatedConfirmedOrders).toBe(0);
+    expect(prog.counts.simulatedPayments).toBe(0);
+    expect(prog.counts.sold).toBe(0);
     const a = prog.sellers.find((s) => s.id === sellerA)!;
     expect(a.folios).toEqual([1, 2]);
     expect(a.linkPath).toBe(`/v/${tokenA}`);
+  });
+
+  it("Excel: previsualiza, vincula a la rifa, asigna folios libres y reimporta sin duplicar", async () => {
+    const ExcelJS = (await import("exceljs")).default;
+    const importer = await import("@/modules/campaigns/seller-import");
+    const wb = new ExcelJS.Workbook();
+    const sheet = wb.addWorksheet("Responsables");
+    sheet.addRow(["nombre", "email", "teléfono", "folios"]);
+    sheet.addRow(["Responsable Excel", `excel-${tag}@example.invalid`, "+56912345678", "4"]);
+    const bytes = Buffer.from(await wb.xlsx.writeBuffer());
+    const rows = await importer.parseSellerWorkbook("responsables.xlsx", bytes);
+    expect(await importer.previewSellerImport(db, userId, raffleId, rows)).toMatchObject({ ready: 1, existing: 0, conflicts: 0, errors: 0 });
+    expect(await importer.importSellerRows(db, userId, raffleId, rows)).toMatchObject({ created: 1, updated: 0, skipped: 0, errors: 0 });
+    const [profile] = await mig`SELECT id, raffle_id, organization_id, email, phone FROM sellers WHERE raffle_id = ${raffleId} AND email = ${`excel-${tag}@example.invalid`}`;
+    expect(profile).toMatchObject({ raffle_id: raffleId, organization_id: orgId, email: `excel-${tag}@example.invalid`, phone: "+56912345678" });
+    expect(await importer.previewSellerImport(db, userId, raffleId, rows)).toMatchObject({ ready: 0, existing: 1, conflicts: 0, errors: 0 });
+    expect(await importer.importSellerRows(db, userId, raffleId, rows)).toMatchObject({ created: 0, skipped: 1, updated: 0 });
+    expect(await importer.previewSellerImport(db, otherUserId, otherRaffleId, rows)).toMatchObject({ ready: 1, existing: 0, conflicts: 0 });
+    const duplicateBook = new ExcelJS.Workbook();
+    const duplicateSheet = duplicateBook.addWorksheet("Responsables");
+    duplicateSheet.addRow(["nombre", "email", "folios"]);
+    duplicateSheet.addRow(["Uno", `dup-${tag}@example.invalid`, "5"]);
+    duplicateSheet.addRow(["Dos", `dup-${tag}@example.invalid`, "5"]);
+    const duplicateRows = await importer.parseSellerWorkbook("duplicados.xlsx", Buffer.from(await duplicateBook.xlsx.writeBuffer()));
+    expect(await importer.previewSellerImport(db, userId, raffleId, duplicateRows)).toMatchObject({ ready: 0, conflicts: 2 });
   });
 
   it("portal y reservas por enlace: restringe folios, atribuye el pedido y rechaza tokens inválidos", async () => {
@@ -202,7 +242,41 @@ describe.skipIf(!enabled)("Talonarios colaborativos (PostgreSQL real)", () => {
     const r = await reserve(["T0001N10"], { sellerToken: tokenA });
     const [o] = await mig`SELECT seller_id FROM orders WHERE raffle_id = ${raffleId} AND seller_id IS NOT NULL`;
     expect(o.seller_id).toBe(sellerA);
+    const sim = await svc.confirmSimulatedPurchase(db, r.token);
+    expect(sim.replay).toBe(false);
+    expect((await svc.confirmSimulatedPurchase(db, r.token)).replay).toBe(true);
+    const [stillDemo] = await mig`SELECT status, is_demo FROM orders WHERE id = ${r.reservation.orderId}`;
+    expect(stillDemo).toEqual({ status: "pending", is_demo: true });
+    expect((await mig`SELECT count(*)::int n FROM raffle_numbers WHERE raffle_id = ${raffleId} AND status = 'sold'`)[0].n).toBe(0);
+    expect((await mig`SELECT count(*)::int n FROM raffle_numbers WHERE raffle_id = ${raffleId} AND number='T0001N10' AND status = 'simulated_sold'`)[0].n).toBe(1);
+    await expect(reserve(["T0001N10"], { sellerToken: tokenA })).rejects.toBeTruthy();
+    const [purchaseEvent] = await mig`SELECT metadata FROM audit_events WHERE organization_id = ${orgId} AND entity_type = 'demo_purchase' AND entity_id = ${r.reservation.orderId} AND action = 'demo.purchase_confirmed'`;
+    const [paymentEvent] = await mig`SELECT metadata FROM audit_events WHERE organization_id = ${orgId} AND entity_type = 'demo_payment' AND entity_id = ${r.reservation.orderId} AND action = 'demo.payment_simulated'`;
+    expect(purchaseEvent.metadata).toMatchObject({ simulation: true, state: "confirmed_fictional", raffleId, sellerId: sellerA, itemCount: 1 });
+    expect(purchaseEvent.metadata.items[0]).toMatchObject({ number: "T0001N10", folio: 1, sellerId: sellerA, state: "confirmed_fictional" });
+    expect(paymentEvent.metadata).toMatchObject({ simulation: true, state: "paid_fictional", raffleId, sellerId: sellerA, amountCents: 1500, itemCount: 1 });
+    const receipt = await rcpt.getReceiptData(db, r.token);
+    expect(receipt.simulationConfirmedAt).toBeInstanceOf(Date);
+    expect(receipt.simulationPaidAt).toBeInstanceOf(Date);
+    const publicReceipt = await rcpt.getVerification(db, receipt.verificationCode);
+    expect(publicReceipt?.simulationPaidAt).toBeInstanceOf(Date);
+    expect(JSON.stringify(publicReceipt)).not.toContain("Persona");
+    const dashboard = await camp.getCampaignProgress(db, userId, raffleId);
+    expect(dashboard.counts).toMatchObject({ simulatedConfirmedOrders: 1, simulatedConfirmedNumbers: 1, simulatedConfirmedAmountCents: 1500, simulatedPayments: 1, simulatedPaidAmountCents: 1500, sold: 0, simulatedSold: 1, activeDemoOrders: 0, activeDemoNumbers: 0, activeDemoAmountCents: 0 });
+    const raffleCard = (await rsvc.listRaffles(db, userId, orgId)).find((item) => item.id === raffleId);
+    expect(raffleCard).toMatchObject({
+      numberTotal: 100,
+      simulatedSold: 1,
+      activeReservations: 0,
+      availableNumbers: 99,
+      realSold: 0,
+      soldPercent: 1,
+      simulatedRevenueCents: 1500,
+      realRevenueCents: 0,
+    });
     await svc.releaseReservation(db, r.token);
+    const [demoState] = await mig`SELECT status FROM raffle_numbers WHERE raffle_id=${raffleId} AND number='T0001N10'`;
+    expect(demoState.status).toBe("simulated_sold");
     // La atribución histórica se conserva tras reasignar.
     await camp.assignBooklets(db, userId, raffleId, sellerB, [1], { allowReassign: true });
     const [{ n }] = await mig`SELECT count(*)::int n FROM orders WHERE seller_id = ${sellerA}`;

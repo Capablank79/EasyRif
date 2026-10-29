@@ -201,9 +201,9 @@ describe.skipIf(!enabled)("Simulación de sorteos (PostgreSQL real)", () => {
   });
 
   it("sorteo oficial bloqueado en el servidor aunque todo figure vendido, y deja auditoría", async () => {
-    await mig`UPDATE raffle_numbers SET status = 'sold' WHERE raffle_id = ${otherRaffleId}`;
+    await mig`UPDATE raffle_numbers SET status = 'simulated_sold' WHERE raffle_id = ${otherRaffleId}`;
     const o = await draws.getSimulationOverview(db, ids.other, otherRaffleId);
-    expect(o.counts).toMatchObject({ total: 200, sold: 200 });
+    expect(o.counts).toMatchObject({ total: 200, sold: 0, simulatedSold: 200 });
     expect(o.gate.enabled).toBe(false);
     await expect(draws.launchOfficialDraw(db, ids.other, otherRaffleId)).rejects.toMatchObject({ code: "blocked" });
     const [{ n }] = await mig`SELECT count(*)::int n FROM audit_events WHERE entity_id = ${otherRaffleId} AND action = 'draw.official_blocked'`;

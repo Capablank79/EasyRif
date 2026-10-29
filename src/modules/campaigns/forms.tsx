@@ -46,7 +46,10 @@ export function CreateSellerForm({ raffleId }: { raffleId: string }) {
       <Msg state={state} />
       <div>
         <L htmlFor="displayName">Nombre del responsable</L>
-        <input id="displayName" name="displayName" required minLength={2} maxLength={80} className={inputCls} />
+        <input id="displayName" name="displayName" required minLength={2} maxLength={80} className={inputCls} aria-describedby="displayName-hint" />
+        <p id="displayName-hint" className="mt-1 text-xs text-navy-700">
+          La persona o grupo que venderá. Ejemplo: «Curso 5° A». Después le asignas sus talonarios.
+        </p>
       </div>
       <Button type="submit" disabled={pending} className="w-full sm:w-auto">
         {pending ? "Creando…" : "Crear responsable"}
@@ -82,7 +85,10 @@ export function AssignForm({
       </div>
       <div>
         <L htmlFor="folios">Folios (ej. 1-5, 8)</L>
-        <input id="folios" name="folios" required className={inputCls} inputMode="numeric" />
+        <input id="folios" name="folios" required className={inputCls} inputMode="numeric" aria-describedby="folios-hint" />
+        <p id="folios-hint" className="mt-1 text-xs text-navy-700">
+          Número de cada talonario. «1-5, 8» asigna los talonarios 1, 2, 3, 4, 5 y 8.
+        </p>
       </div>
       <label className="flex min-h-11 items-start gap-2 text-sm text-navy-900">
         <input type="checkbox" name="allowReassign" className="mt-1" />
@@ -109,7 +115,7 @@ export function UnassignForm({ raffleId }: { raffleId: string }) {
         <input id="unfolios" name="folios" required className={inputCls} inputMode="numeric" />
       </div>
       <Button type="submit" variant="secondary" disabled={pending} className="w-full sm:w-auto">
-        Quitar responsable
+        {pending ? "Quitando…" : "Quitar responsable"}
       </Button>
     </form>
   );
@@ -125,8 +131,11 @@ export function RevokeSellerForm({ raffleId, sellerId }: { raffleId: string; sel
       <Msg state={state} />
       {confirm ? (
         <div className="flex flex-col gap-2 sm:flex-row">
+          <p role="alert" className="text-sm text-navy-900 sm:self-center">
+            El enlace de este responsable dejará de funcionar.
+          </p>
           <Button type="submit" variant="secondary" disabled={pending} className="w-full sm:w-auto">
-            Confirmar revocación
+            {pending ? "Revocando…" : "Confirmar revocación"}
           </Button>
           <Button type="button" variant="ghost" onClick={() => setConfirm(false)} className="w-full sm:w-auto">
             Cancelar

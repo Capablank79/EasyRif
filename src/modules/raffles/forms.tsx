@@ -1,8 +1,9 @@
 "use client";
 
-import { useActionState, useState, type ReactNode } from "react";
+import { useActionState, useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { ImageControl } from "./image-control";
+import { CREATE_STEPS, firstStepWithError, missingRequiredInStep, type CreateStepId } from "./guidance";
 import {
   addPrizeAction,
   createRaffleAction,
@@ -14,6 +15,21 @@ import {
   updateRaffleAction,
   type RaffleFormState,
 } from "./actions";
+
+const FIELD_LABEL: Record<string, string> = {
+  title: "Nombre",
+  description: "Descripción",
+  price: "Precio",
+  currency: "Moneda",
+  numbering: "Tipo de numeración",
+  numberCount: "Cantidad de números",
+  bookletCount: "Cantidad de talonarios",
+  numbersPerBooklet: "Números por talonario",
+  firstFolio: "Folio inicial",
+  drawDate: "Fecha estimada del sorteo",
+  salesClosesAt: "Cierre de ventas",
+  drawAt: "Fecha del sorteo",
+};
 
 const inputCls =
   "mt-1 block min-h-11 w-full rounded-xl border border-line bg-white px-3 text-base text-navy-950 focus:border-navy-700 focus:outline-2 focus:outline-offset-2 focus:outline-navy-700 disabled:bg-sky-50 disabled:text-muted";
@@ -55,7 +71,8 @@ function Field({
       {children}
       {hint && !error && <p className="mt-1 text-xs text-navy-700">{hint}</p>}
       {error && (
-        <p id={`${name}-err`} className="mt-1 text-sm text-red-700">
+        <p id={`${name}-err`} className="mt-1 text-sm font-medium text-red-700">
+          <span aria-hidden="true">⚠ </span>
           {error}
         </p>
       )}
@@ -97,138 +114,345 @@ export function RaffleForm({
   lockNumberCount?: boolean;
   timeZone?: string;
 }) {
+  const isCreate = mode === "create";
   const [state, action, pending] = useActionState<RaffleFormState, FormData>(
-    mode === "create" ? createRaffleAction : updateRaffleAction,
+    isCreate ? createRaffleAction : updateRaffleAction,
     {},
   );
-  const e = state.fieldErrors ?? {};
-  const [numbering, setNumbering] = useState(defaults.numbering ?? "individual");
-  const [bookletCount, setBookletCount] = useState(defaults.bookletCount ?? "10");
-  const [perBooklet, setPerBooklet] = useState(defaults.numbersPerBooklet ?? "20");
-  const [firstFolio, setFirstFolio] = useState(defaults.firstFolio ?? "1");
-  const computedTotal =
-    /^\d{1,5}$/.test(bookletCount) && /^\d{1,5}$/.test(perBooklet) ? Number(bookletCount) * Number(perBooklet) : null;
-  const err = (k: keyof typeof e) => ({
-    "aria-invalid": Boolean(e[k]),
-    "aria-describedby": e[k] ? `${k}-err` : undefined,
+  const [numbering, setNumbering] = useState<"individual" | "booklets">(defaults.numbering ?? "individual");
+  // Todos los valores viven en el cliente: cambiar de paso (o un error del servidor) no los pierde.
+  const [v, setV] = useState({
+    title: defaults.title,
+    description: defaults.description,
+    price: defaults.price,
+    currency: defaults.currency,
+    numberCount: defaults.numberCount,
+    drawDate: defaults.drawDate,
+    bookletCount: defaults.bookletCount ?? "10",
+    numbersPerBooklet: defaults.numbersPerBooklet ?? "20",
+    firstFolio: defaults.firstFolio ?? "1",
+    salesClosesAt: defaults.salesClosesAt ?? "",
+    drawAt: defaults.drawAt ?? "",
   });
+  const set =
+    (k: keyof typeof v) => (ev: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+      setV((p) => ({ ...p, [k]: ev.target.value }));
+
+  const [step, setStep] = useState<CreateStepId>(1);
+  const [clientErrors, setClientErrors] = useState<Record<string, string>>({});
+  const [seenState, setSeenState] = useState(state);
+  if (state !== seenState) {
+    // Respuesta nueva del servidor: llevar al usuario al primer paso con errores.
+    setSeenState(state);
+    setClientErrors({});
+    const s = firstStepWithError(state.fieldErrors as Record<string, string | undefined> | undefined);
+    if (s) setStep(s);
+  }
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const firstRender = useRef(true);
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    headingRef.current?.focus();
+  }, [step]);
+
+  const errs: Record<string, string | undefined> = { ...(state.fieldErrors ?? {}), ...clientErrors };
+  const errList = Object.entries(errs).filter(([, m]) => m) as [string, string][];
+  const err = (k: string) => ({
+    "aria-invalid": Boolean(errs[k]),
+    "aria-describedby": errs[k] ? `${k}-err` : undefined,
+  });
+  const show = (n: CreateStepId) => !isCreate || step === n;
+  const computedTotal =
+    /^\d{1,5}$/.test(v.bookletCount) && /^\d{1,5}$/.test(v.numbersPerBooklet)
+      ? Number(v.bookletCount) * Number(v.numbersPerBooklet)
+      : null;
+  const totalParticipations = numbering === "booklets" ? computedTotal : /^\d{1,6}$/.test(v.numberCount) ? Number(v.numberCount) : null;
+
+  function goNext() {
+    const missing = missingRequiredInStep(step, { ...v, numbering });
+    setClientErrors(missing);
+    if (Object.keys(missing).length === 0 && step < 3) setStep((step + 1) as CreateStepId);
+  }
+  function goBack() {
+    setClientErrors({});
+    if (step > 1) setStep((step - 1) as CreateStepId);
+  }
+  const dt = (s: string) => (s ? s.replace("T", " ") : "Sin definir");
+
   return (
-    <form action={action} className="space-y-4" noValidate>
+    <form
+      action={action}
+      className="space-y-5"
+      noValidate
+      onKeyDown={(ev) => {
+        // En el asistente, Enter avanza de paso en vez de enviar el formulario incompleto.
+        const t = ev.target as HTMLElement;
+        if (isCreate && step < 3 && ev.key === "Enter" && t.tagName === "INPUT") {
+          ev.preventDefault();
+          goNext();
+        }
+      }}
+    >
       {organizationId && <input type="hidden" name="organizationId" value={organizationId} />}
       {raffleId && <input type="hidden" name="raffleId" value={raffleId} />}
-      <Msg state={state} />
-      <Field label="Nombre de la rifa" name="title" error={e.title}>
-        <input id="title" name="title" required maxLength={200} defaultValue={defaults.title} className={inputCls} {...err("title")} />
-      </Field>
-      <Field label="Descripción (opcional)" name="description" error={e.description}>
-        <textarea id="description" name="description" rows={4} maxLength={2000} defaultValue={defaults.description} className={inputCls + " py-2"} {...err("description")} />
-      </Field>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Precio por número" name="price" error={e.price}>
-          <input id="price" name="price" inputMode="decimal" required defaultValue={defaults.price} className={inputCls} {...err("price")} />
-        </Field>
-        <Field label="Moneda" name="currency" error={e.currency}>
-          <select id="currency" name="currency" defaultValue={defaults.currency} className={inputCls}>
-            {currencies.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
+
+      {isCreate && (
+        <div>
+          <p className="text-sm font-semibold text-navy-700">
+            Paso {step} de {CREATE_STEPS.length}
+          </p>
+          <ol className="mt-2 grid grid-cols-3 gap-2" aria-label="Pasos para crear la rifa">
+            {CREATE_STEPS.map((s) => (
+              <li
+                key={s.id}
+                aria-current={s.id === step ? "step" : undefined}
+                className={
+                  "rounded-xl border px-2 py-2 text-center text-xs font-semibold sm:text-sm " +
+                  (s.id === step
+                    ? "border-navy-900 bg-navy-900 text-white"
+                    : s.id < step
+                      ? "border-navy-900/30 bg-sky-100 text-navy-900"
+                      : "border-line bg-white text-muted")
+                }
+              >
+                <span className="block">{s.id}</span>
+                {s.title}
+              </li>
             ))}
-          </select>
+          </ol>
+          <p className="mt-2 text-xs text-muted">
+            Después de crear el borrador seguirás con: 4. Premios e imágenes · 5. Publicar.
+          </p>
+        </div>
+      )}
+
+      {errList.length > 0 && (
+        <div role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">
+          <p className="font-semibold">Revisa estos campos para continuar:</p>
+          <ul className="mt-1 list-disc pl-5">
+            {errList.map(([k, m]) => (
+              <li key={k}>
+                {FIELD_LABEL[k] ?? k}: {m}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <Msg state={state} />
+
+      {/* Paso 1 */}
+      <div hidden={!show(1)} className="space-y-4">
+        {isCreate ? (
+          <h2 ref={step === 1 ? headingRef : undefined} tabIndex={-1} className="text-lg font-semibold text-navy-900 outline-none">
+            Cuéntanos de tu rifa
+          </h2>
+        ) : (
+          <h3 className="text-base font-semibold text-navy-900">Datos básicos</h3>
+        )}
+        <Field label="Nombre de la rifa" name="title" error={errs.title} hint="Ejemplo: Rifa solidaria 2026.">
+          <input id="title" name="title" required maxLength={200} value={v.title} onChange={set("title")} className={inputCls} {...err("title")} />
         </Field>
+        <Field label="Descripción (opcional)" name="description" error={errs.description} hint="Cuenta para qué es la rifa y cómo se entregan los premios.">
+          <textarea id="description" name="description" rows={4} maxLength={2000} value={v.description} onChange={set("description")} className={inputCls + " py-2"} {...err("description")} />
+        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Precio por número" name="price" error={errs.price} hint="Lo que paga cada persona por un número, sin símbolo. Ejemplo: 1000.">
+            <input id="price" name="price" inputMode="decimal" required value={v.price} onChange={set("price")} className={inputCls} {...err("price")} />
+          </Field>
+          <Field label="Moneda" name="currency" error={errs.currency}>
+            <select id="currency" name="currency" value={v.currency} onChange={set("currency")} className={inputCls}>
+              {currencies.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+      </div>
+
+      {/* Paso 2 */}
+      <div hidden={!show(2)} className="space-y-4">
+        {isCreate ? (
+          <h2 ref={step === 2 ? headingRef : undefined} tabIndex={-1} className="text-lg font-semibold text-navy-900 outline-none">
+            ¿Cómo se numera la rifa?
+          </h2>
+        ) : (
+          <h3 className="text-base font-semibold text-navy-900">Numeración y modalidad</h3>
+        )}
+        <fieldset className="rounded-xl border border-line p-3">
+          <legend className="px-1 text-sm font-medium text-navy-900">Tipo de numeración</legend>
+          {lockNumberCount && <input type="hidden" name="numbering" value={numbering} />}
+          <div className="grid gap-2 sm:grid-cols-2">
+            {(
+              [
+                ["individual", "Numeración individual", "Números sueltos: 001, 002, 003… Cada persona elige los que quiera."],
+                ["booklets", "Talonarios foliados", "Grupos de números impresos. Cada uno se identifica con folio y número, por ejemplo T-0003 / N-15 (talonario 3, número 15)."],
+              ] as const
+            ).map(([value, title, hint]) => (
+              <label
+                key={value}
+                className={
+                  "flex min-h-11 cursor-pointer items-start gap-2 rounded-xl border p-3 text-sm " +
+                  (numbering === value ? "border-navy-900 bg-sky-50" : "border-line")
+                }
+              >
+                <input
+                  type="radio"
+                  name={lockNumberCount ? undefined : "numbering"}
+                  value={value}
+                  checked={numbering === value}
+                  disabled={lockNumberCount}
+                  onChange={() => setNumbering(value)}
+                  className="mt-1"
+                />
+                <span>
+                  <span className="block font-semibold text-navy-900">{title}</span>
+                  <span className="text-xs text-navy-700">{hint}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+          {lockNumberCount && (
+            <p className="mt-2 text-xs text-navy-700">Ya hay números generados: la numeración no se puede cambiar.</p>
+          )}
+        </fieldset>
+        {isCreate && (
+          <p role="note" className="rounded-xl bg-sky-100 p-3 text-sm text-navy-900">
+            <strong>Importante:</strong> cuando generes los números, la modalidad y la cantidad ya no se podrán cambiar. Al publicar,
+            tampoco el precio ni la moneda.
+          </p>
+        )}
         {numbering === "individual" ? (
           <Field
             label="Cantidad de números"
             name="numberCount"
-            error={e.numberCount}
-            hint={
-              lockNumberCount
-                ? "Ya hay números generados: la cantidad no se puede cambiar."
-                : `Entre 1 y ${maxNumbers}.`
-            }
+            error={errs.numberCount}
+            hint={lockNumberCount ? "Ya hay números generados: la cantidad no se puede cambiar." : `Entre 1 y ${maxNumbers}. Ejemplo: 100.`}
           >
-            <input
-              id="numberCount"
-              name="numberCount"
-              inputMode="numeric"
-              required
-              defaultValue={defaults.numberCount}
-              readOnly={lockNumberCount}
-              className={inputCls}
-              {...err("numberCount")}
-            />
+            <input id="numberCount" name="numberCount" inputMode="numeric" required value={v.numberCount} onChange={set("numberCount")} readOnly={lockNumberCount} className={inputCls} {...err("numberCount")} />
           </Field>
         ) : (
-          <input type="hidden" name="numberCount" value={defaults.numberCount} />
-        )}
-        <Field label="Fecha estimada del sorteo (opcional)" name="drawDate" error={e.drawDate} hint="Solo informativa.">
-          <input id="drawDate" name="drawDate" type="date" defaultValue={defaults.drawDate} className={inputCls} {...err("drawDate")} />
-        </Field>
-      </div>
-      <fieldset className="rounded-xl border border-line p-3" disabled={false}>
-        <legend className="px-1 text-sm font-medium text-navy-900">Tipo de numeración</legend>
-        {lockNumberCount && <input type="hidden" name="numbering" value={numbering} />}
-        <div className="grid gap-2 sm:grid-cols-2">
-          {(
-            [
-              ["individual", "Numeración individual", "Números 001, 002, 003…"],
-              ["booklets", "Talonarios foliados", "Folio + número interno (T-0007 / N-14)"],
-            ] as const
-          ).map(([value, title, hint]) => (
-            <label
-              key={value}
-              className={
-                "flex min-h-11 cursor-pointer items-start gap-2 rounded-xl border p-3 text-sm " +
-                (numbering === value ? "border-navy-900 bg-sky-50" : "border-line")
-              }
-            >
-              <input
-                type="radio"
-                name={lockNumberCount ? undefined : "numbering"}
-                value={value}
-                checked={numbering === value}
-                disabled={lockNumberCount}
-                onChange={() => setNumbering(value)}
-                className="mt-1"
-              />
-              <span>
-                <span className="block font-semibold text-navy-900">{title}</span>
-                <span className="text-xs text-navy-700">{hint}</span>
-              </span>
-            </label>
-          ))}
-        </div>
-        {lockNumberCount && (
-          <p className="mt-2 text-xs text-navy-700">Ya hay números generados: la numeración no se puede cambiar.</p>
-        )}
-        {numbering === "booklets" && (
-          <div className="mt-3 grid gap-4 sm:grid-cols-3">
-            <Field label="Cantidad de talonarios" name="bookletCount" error={e.bookletCount}>
-              <input id="bookletCount" name="bookletCount" inputMode="numeric" required value={bookletCount} onChange={(ev) => setBookletCount(ev.target.value)} readOnly={lockNumberCount} className={inputCls} {...err("bookletCount")} />
-            </Field>
-            <Field label="Números por talonario" name="numbersPerBooklet" error={e.numbersPerBooklet}>
-              <input id="numbersPerBooklet" name="numbersPerBooklet" inputMode="numeric" required value={perBooklet} onChange={(ev) => setPerBooklet(ev.target.value)} readOnly={lockNumberCount} className={inputCls} {...err("numbersPerBooklet")} />
-            </Field>
-            <Field label="Folio inicial" name="firstFolio" error={e.firstFolio}>
-              <input id="firstFolio" name="firstFolio" inputMode="numeric" value={firstFolio} onChange={(ev) => setFirstFolio(ev.target.value)} readOnly={lockNumberCount} className={inputCls} {...err("firstFolio")} />
-            </Field>
-            <Field label="Cierre de ventas" name="salesClosesAt" error={e.salesClosesAt} hint={`Hora de ${timeZone}.`}>
-              <input id="salesClosesAt" name="salesClosesAt" type="datetime-local" required defaultValue={defaults.salesClosesAt} className={inputCls} {...err("salesClosesAt")} />
-            </Field>
-            <Field label="Fecha del sorteo" name="drawAt" error={e.drawAt} hint="Posterior al cierre. El sorteo no se ejecuta en esta fase.">
-              <input id="drawAt" name="drawAt" type="datetime-local" required defaultValue={defaults.drawAt} className={inputCls} {...err("drawAt")} />
-            </Field>
-            <p className="text-sm text-navy-900 sm:col-span-3" aria-live="polite">
+          <>
+            <input type="hidden" name="numberCount" value={defaults.numberCount} />
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Field label="Cantidad de talonarios" name="bookletCount" error={errs.bookletCount} hint="Ejemplo: 10 talonarios.">
+                <input id="bookletCount" name="bookletCount" inputMode="numeric" required value={v.bookletCount} onChange={set("bookletCount")} readOnly={lockNumberCount} className={inputCls} {...err("bookletCount")} />
+              </Field>
+              <Field label="Números por talonario" name="numbersPerBooklet" error={errs.numbersPerBooklet} hint="Ejemplo: 20 números en cada uno.">
+                <input id="numbersPerBooklet" name="numbersPerBooklet" inputMode="numeric" required value={v.numbersPerBooklet} onChange={set("numbersPerBooklet")} readOnly={lockNumberCount} className={inputCls} {...err("numbersPerBooklet")} />
+              </Field>
+              <Field label="Folio inicial" name="firstFolio" error={errs.firstFolio} hint="Número del primer talonario. Normalmente 1.">
+                <input id="firstFolio" name="firstFolio" inputMode="numeric" value={v.firstFolio} onChange={set("firstFolio")} readOnly={lockNumberCount} className={inputCls} {...err("firstFolio")} />
+              </Field>
+            </div>
+            <p className="text-sm text-navy-900" aria-live="polite">
               {computedTotal !== null
-                ? `Total: ${computedTotal} participaciones únicas (${bookletCount} talonarios × ${perBooklet} números).`
-                : "Indique cantidades enteras para calcular el total."}
+                ? `Total: ${computedTotal} participaciones únicas (${v.bookletCount} talonarios × ${v.numbersPerBooklet} números).`
+                : "Indica cantidades enteras para calcular el total."}
+            </p>
+          </>
+        )}
+      </div>
+
+      {/* Paso 3 */}
+      <div hidden={!show(3)} className="space-y-4">
+        {isCreate ? (
+          <h2 ref={step === 3 ? headingRef : undefined} tabIndex={-1} className="text-lg font-semibold text-navy-900 outline-none">
+            Fechas y revisión
+          </h2>
+        ) : (
+          <h3 className="text-base font-semibold text-navy-900">Fechas</h3>
+        )}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Fecha estimada del sorteo (opcional)" name="drawDate" error={errs.drawDate} hint="Solo informativa.">
+            <input id="drawDate" name="drawDate" type="date" value={v.drawDate} onChange={set("drawDate")} className={inputCls} {...err("drawDate")} />
+          </Field>
+          {numbering === "booklets" && (
+            <>
+              <Field label="Cierre de ventas" name="salesClosesAt" error={errs.salesClosesAt} hint={`Hora de ${timeZone}.`}>
+                <input id="salesClosesAt" name="salesClosesAt" type="datetime-local" required value={v.salesClosesAt} onChange={set("salesClosesAt")} className={inputCls} {...err("salesClosesAt")} />
+              </Field>
+              <Field label="Fecha del sorteo" name="drawAt" error={errs.drawAt} hint="Posterior al cierre. El sorteo no se ejecuta en esta fase.">
+                <input id="drawAt" name="drawAt" type="datetime-local" required value={v.drawAt} onChange={set("drawAt")} className={inputCls} {...err("drawAt")} />
+              </Field>
+            </>
+          )}
+        </div>
+        {isCreate && (
+          <div className="rounded-xl border border-line bg-sky-50 p-3">
+            <h3 className="text-sm font-semibold text-navy-900">Resumen antes de crear</h3>
+            <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">
+              <div>
+                <dt className="text-muted">Nombre</dt>
+                <dd className="break-words font-semibold">{v.title || "Sin nombre"}</dd>
+              </div>
+              <div>
+                <dt className="text-muted">Modalidad</dt>
+                <dd className="font-semibold">{numbering === "booklets" ? "Talonarios foliados" : "Numeración individual"}</dd>
+              </div>
+              <div>
+                <dt className="text-muted">Participaciones</dt>
+                <dd className="font-semibold">
+                  {totalParticipations ?? "—"}
+                  {numbering === "booklets" && computedTotal !== null ? ` (${v.bookletCount} talonarios × ${v.numbersPerBooklet})` : ""}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted">Precio por número</dt>
+                <dd className="font-semibold">{v.price ? `${v.price} ${v.currency}` : "Sin precio"}</dd>
+              </div>
+              <div>
+                <dt className="text-muted">Fecha estimada del sorteo</dt>
+                <dd className="font-semibold">{v.drawDate || "Sin definir"}</dd>
+              </div>
+              {numbering === "booklets" && (
+                <div>
+                  <dt className="text-muted">Cierre de ventas · Sorteo</dt>
+                  <dd className="font-semibold">
+                    {dt(v.salesClosesAt)} · {dt(v.drawAt)}
+                  </dd>
+                </div>
+              )}
+            </dl>
+            <p className="mt-3 text-xs text-navy-700">
+              Se guardará como borrador: todavía no es pública. En la pantalla siguiente agregas premios e imágenes y luego la publicas.
+              Funciona en modo demostración, sin pagos ni ventas reales.
             </p>
           </div>
         )}
-      </fieldset>
-      <Button type="submit" disabled={pending} className="w-full sm:w-auto">
-        {pending ? "Guardando…" : mode === "create" ? "Crear borrador" : "Guardar cambios"}
-      </Button>
+      </div>
+
+      <p className="sr-only" aria-live="polite">
+        {pending ? "Guardando…" : ""}
+      </p>
+      {isCreate ? (
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
+          {step > 1 ? (
+            <Button type="button" variant="ghost" onClick={goBack} disabled={pending} className="w-full sm:w-auto">
+              ← Atrás
+            </Button>
+          ) : (
+            <span />
+          )}
+          {step < 3 ? (
+            <Button type="button" onClick={goNext} className="w-full sm:w-auto">
+              Siguiente →
+            </Button>
+          ) : (
+            <Button type="submit" disabled={pending} className="w-full sm:w-auto">
+              {pending ? "Guardando…" : "Crear borrador"}
+            </Button>
+          )}
+        </div>
+      ) : (
+        <Button type="submit" disabled={pending} className="w-full sm:w-auto">
+          {pending ? "Guardando…" : "Guardar cambios"}
+        </Button>
+      )}
     </form>
   );
 }
@@ -264,7 +488,7 @@ function MiniForm({
   children: ReactNode;
   confirm?: string;
 }) {
-  const [state, act] = useActionState<RaffleFormState, FormData>(action, {});
+  const [state, act, pending] = useActionState<RaffleFormState, FormData>(action, {});
   return (
     <form
       action={act}
@@ -275,7 +499,10 @@ function MiniForm({
       {Object.entries(fields).map(([k, v]) => (
         <input key={k} type="hidden" name={k} value={v} />
       ))}
-      {children}
+      {/* Bloquea el botón mientras se procesa: evita envíos duplicados. */}
+      <fieldset disabled={pending} className="m-0 min-w-0 border-0 p-0">
+        {children}
+      </fieldset>
       {state.error && (
         <p role="alert" className="mt-1 text-xs text-red-700">
           {state.error}
